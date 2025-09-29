@@ -169,7 +169,70 @@ bool playMove(GameModel &model, Square move)
 
     setBoardPiece(model, move, piece);
 
-    // To-do: your code goes here...
+    // Definir las 8 direcciones posibles (arriba, abajo, izq, der, y 4 diagonales)
+    int directions[8][2] = {
+        {-1, -1},  // Arriba-Izquierda
+        {0, -1},   // Arriba
+        {1, -1},   // Arriba-Derecha
+        {-1, 0},   // Izquierda
+        {1, 0},    // Derecha
+        {-1, 1},   // Abajo-Izquierda
+        {0, 1},    // Abajo
+        {1, 1}     // Abajo-Derecha
+    };
+
+    // Determinar cuál es la pieza enemiga
+    Piece enemyPiece = (piece == PIECE_WHITE) ? PIECE_BLACK : PIECE_WHITE;
+
+    // Para cada una de las 8 direcciones
+    for (int dir = 0; dir < 8; dir++)
+    {
+        int dx = directions[dir][0];  // Desplazamiento en X
+        int dy = directions[dir][1];  // Desplazamiento en Y
+
+        // Empezar desde la posición siguiente a donde pusimos nuestra ficha
+        Square current = { move.x + dx, move.y + dy };
+
+        // Lista para guardar las fichas enemigas que encontremos
+        std::vector<Square> toFlip;
+
+        // Avanzar en esta dirección mientras estemos en el tablero
+        while (isSquareValid(current))
+        {
+            Piece currentPiece = getBoardPiece(model, current);
+
+            // Si encontramos una casilla vacía, no hay nada que voltear
+            if (currentPiece == PIECE_EMPTY)
+            {
+                break;  // Salir del while
+            }
+
+            // Si encontramos una ficha enemiga, la guardamos
+            if (currentPiece == enemyPiece)
+            {
+                toFlip.push_back(current);
+            }
+
+            // Si encontramos una ficha nuestra
+            if (currentPiece == piece)
+            {
+                // Solo volteamos si hay fichas enemigas en el medio
+                if (toFlip.size() > 0)
+                {
+                    // Voltear todas las fichas enemigas que guardamos
+                    for (int i = 0; i < toFlip.size(); i++)
+                    {
+                        setBoardPiece(model, toFlip[i], piece);
+                    }
+                }
+                break;  // Salir del while
+            }
+
+            // Avanzar a la siguiente casilla en esta dirección
+            current.x += dx;
+            current.y += dy;
+        }
+    }
 
     // Update timer
     double currentTime = GetTime();
