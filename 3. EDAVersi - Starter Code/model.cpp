@@ -86,72 +86,73 @@ bool isSquareValid(Square square)
            (square.y < BOARD_SIZE);
 }
 
-void getValidMoves(GameModel &model, Moves &validMoves)
+void getValidMoves(GameModel& model, Moves& validMoves)
 {
     // Determinar la ficha del jugador actual y del oponente
     Piece currentPiece = (model.currentPlayer == PLAYER_WHITE) ? PIECE_WHITE : PIECE_BLACK;
     Piece opponentPiece = (model.currentPlayer == PLAYER_WHITE) ? PIECE_BLACK : PIECE_WHITE;
-    
+
     // Las 8 direcciones posibles (horizontal, vertical y diagonal)
     int directions[8][2] = {
         {-1, -1}, {-1, 0}, {-1, 1},  // arriba-izq, arriba, arriba-der
         {0, -1},           {0, 1},    // izquierda, derecha
         {1, -1},  {1, 0},  {1, 1}     // abajo-izq, abajo, abajo-der
     };
-    
+
     // Revisar cada casilla del tablero
     for (int y = 0; y < BOARD_SIZE; y++)
     {
         for (int x = 0; x < BOARD_SIZE; x++)
         {
-            Square move = {x, y};
-            
+            Square move = { x, y };
+
             // Si la casilla no está vacía, no es válida
             if (getBoardPiece(model, move) != PIECE_EMPTY)
                 continue;
-            
+
             bool isValid = false;
-            
+
             // Revisar cada dirección
             for (int d = 0; d < 8; d++)
             {
                 int dx = directions[d][0];
                 int dy = directions[d][1];
-                
-                Square current = {x + dx, y + dy};
+
+                Square current = { x + dx, y + dy };
                 bool foundOpponent = false;
-                
-                // Avanzar en esta dirección
+
+                // Avanzar en esta dirección mientras sea válido
                 while (isSquareValid(current))
                 {
                     Piece piece = getBoardPiece(model, current);
-                    
-                    // Si encontramos una casilla vacía, esta dirección no es válida
+
+                    // Si encontramos una casilla vacía, esta dirección no captura nada
                     if (piece == PIECE_EMPTY)
                         break;
-                    
+
                     // Si encontramos una ficha del oponente, seguimos buscando
                     if (piece == opponentPiece)
                     {
                         foundOpponent = true;
                         current.x += dx;
                         current.y += dy;
+                        continue;  // Seguir avanzando en esta dirección
                     }
+
                     // Si encontramos nuestra ficha
-                    else if (piece == currentPiece)
+                    if (piece == currentPiece)
                     {
                         // Solo es válido si antes encontramos al menos una ficha del oponente
                         if (foundOpponent)
+                        {
                             isValid = true;
-                        break;
+                            break;  // Salir del for, ya encontramos una dirección válida
+                        }
+                        break;  // Terminar esta dirección
                     }
                 }
-                
-                // Si ya encontramos una dirección válida, no necesitamos seguir
-                if (isValid)
-                    break;
             }
-            
+
             // Si el movimiento es válido en al menos una dirección, agregarlo
             if (isValid)
                 validMoves.push_back(move);
