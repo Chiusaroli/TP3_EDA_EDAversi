@@ -7,6 +7,10 @@
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:ai.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     },
     {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Acer\\Documents\\ITBA\\2do\\1er cuatri\\Algoritmos y estructuras de datos (25.03)\\Practica\\3\\TP3_EDA_EDAversi\\3. EDAVersi - Starter Code\\main.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:main.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Acer\\Documents\\ITBA\\2do\\1er cuatri\\Algoritmos y estructuras de datos (25.03)\\Practica\\3\\TP3_EDA_EDAversi\\3. EDAVersi - Starter Code\\view.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:view.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     },
@@ -17,10 +21,6 @@
     {
       "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Acer\\Documents\\ITBA\\2do\\1er cuatri\\Algoritmos y estructuras de datos (25.03)\\Practica\\3\\TP3_EDA_EDAversi\\3. EDAVersi - Starter Code\\model.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:model.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Acer\\Documents\\ITBA\\2do\\1er cuatri\\Algoritmos y estructuras de datos (25.03)\\Practica\\3\\TP3_EDA_EDAversi\\3. EDAVersi - Starter Code\\main.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:main.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     }
   ],
   "DocumentGroupContainers": [
@@ -38,19 +38,18 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 3,
               "Title": "CMakeSettings.json",
               "DocumentMoniker": "C:\\Users\\Acer\\Documents\\ITBA\\2do\\1er cuatri\\Algoritmos y estructuras de datos (25.03)\\Practica\\3\\TP3_EDA_EDAversi\\3. EDAVersi - Starter Code\\CMakeSettings.json",
               "RelativeDocumentMoniker": "CMakeSettings.json",
               "ToolTip": "C:\\Users\\Acer\\Documents\\ITBA\\2do\\1er cuatri\\Algoritmos y estructuras de datos (25.03)\\Practica\\3\\TP3_EDA_EDAversi\\3. EDAVersi - Starter Code\\CMakeSettings.json",
               "RelativeToolTip": "CMakeSettings.json",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
-              "WhenOpened": "2025-10-02T19:07:57.516Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-10-02T19:07:57.516Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 2,
               "Title": "view.cpp",
               "DocumentMoniker": "C:\\Users\\Acer\\Documents\\ITBA\\2do\\1er cuatri\\Algoritmos y estructuras de datos (25.03)\\Practica\\3\\TP3_EDA_EDAversi\\3. EDAVersi - Starter Code\\view.cpp",
               "RelativeDocumentMoniker": "view.cpp",
@@ -58,8 +57,7 @@
               "RelativeToolTip": "view.cpp",
               "ViewState": "AgIAANsAAAAAAAAAAAAAAMwAAAAbAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
-              "WhenOpened": "2025-10-02T18:30:59.834Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-10-02T18:30:59.834Z"
             },
             {
               "$type": "Document",
@@ -69,14 +67,14 @@
               "RelativeDocumentMoniker": "ai.cpp",
               "ToolTip": "C:\\Users\\Acer\\Documents\\ITBA\\2do\\1er cuatri\\Algoritmos y estructuras de datos (25.03)\\Practica\\3\\TP3_EDA_EDAversi\\3. EDAVersi - Starter Code\\ai.cpp",
               "RelativeToolTip": "ai.cpp",
-              "ViewState": "AgIAANEAAAAAAAAAAAAuwOwAAAABAAAAAAAAAA==",
+              "ViewState": "AgIAAEcBAAAAAAAAAAAowF8BAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
               "WhenOpened": "2025-10-02T17:52:16.236Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 4,
               "Title": "model.cpp",
               "DocumentMoniker": "C:\\Users\\Acer\\Documents\\ITBA\\2do\\1er cuatri\\Algoritmos y estructuras de datos (25.03)\\Practica\\3\\TP3_EDA_EDAversi\\3. EDAVersi - Starter Code\\model.cpp",
               "RelativeDocumentMoniker": "model.cpp",
@@ -84,12 +82,11 @@
               "RelativeToolTip": "model.cpp",
               "ViewState": "AgIAAHgAAAAAAAAAAIBJwJoAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
-              "WhenOpened": "2025-09-29T22:47:48.849Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-29T22:47:48.849Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 1,
               "Title": "main.cpp",
               "DocumentMoniker": "C:\\Users\\Acer\\Documents\\ITBA\\2do\\1er cuatri\\Algoritmos y estructuras de datos (25.03)\\Practica\\3\\TP3_EDA_EDAversi\\3. EDAVersi - Starter Code\\main.cpp",
               "RelativeDocumentMoniker": "main.cpp",
@@ -97,7 +94,8 @@
               "RelativeToolTip": "main.cpp",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAABUAAAAPAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
-              "WhenOpened": "2025-09-29T22:36:36.218Z"
+              "WhenOpened": "2025-09-29T22:36:36.218Z",
+              "EditorCaption": ""
             }
           ]
         }

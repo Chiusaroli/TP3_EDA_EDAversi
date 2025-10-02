@@ -2,20 +2,22 @@
 
 ## Optimizaciones implementadas en el algoritmo Minimax
 
-### 1. Poda por profundidad (Depth Limiting)
+### 1. Poda por profundidad adaptativa (Adaptive Depth Limiting)
 
 **¿Qué es?**
-Limita la profundidad máxima del árbol de búsqueda a un nivel predefinido (`MAX_DEPTH = 6`).
+Ajusta dinámicamente la profundidad según la fase del juego:
+- **Juego inicial** (4-20 fichas): profundidad 7
+- **Medio juego** (21-44 fichas): profundidad 8
+- **Final del juego** (45+ fichas): profundidad 12
 
-**¿Por qué mejora la performance?**
-- Sin límite de profundidad, el árbol crecería exponencialmente hasta el final del juego
+**¿Por qué mejora la performance Y la calidad?**
+- En el inicio hay muchos movimientos posibles (~20-30), menos profundidad es suficiente
+- En el final hay pocos movimientos (~2-10), podemos buscar exhaustivamente
 - En Reversi, con un factor de ramificación promedio de ~10 movimientos por turno:
-  - Profundidad 4: ~10,000 nodos
-  - Profundidad 6: ~1,000,000 nodos
-  - Profundidad 8: ~100,000,000 nodos (inviable)
-- Al limitar a profundidad 6, mantenemos un balance entre calidad de juego y tiempo de respuesta
+  - Profundidad 7 inicio: ~10,000,000 nodos → con poda ~50,000
+  - Profundidad 12 final: ~1,000,000,000,000 nodos → con poda y pocos movimientos ~100,000
 
-**Impacto:** Reduce el tiempo de búsqueda de infinito a unos pocos segundos.
+**Impacto:** Maximiza la fuerza de juego en cada fase sin sacrificar vel
 
 ---
 

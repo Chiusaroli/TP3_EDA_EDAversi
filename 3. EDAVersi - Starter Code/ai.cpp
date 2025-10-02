@@ -7,62 +7,94 @@
 
 #include <cstdlib>
 #include <climits>
+#include <algorithm>
 
 #include "ai.h"
 #include "controller.h"
 
- // Profundidad máxima del árbol Minimax
-#define MAX_DEPTH 6
+ // Profundidad adaptativa según fase del juego
+#define EARLY_GAME_DEPTH 7
+#define MID_GAME_DEPTH 8
+#define END_GAME_DEPTH 12
 
-// Límite de nodos explorados antes de detener la búsqueda
-#define MAX_NODES 100000
+// Límite de nodos para casos extremos
+#define MAX_NODES 500000
 
 // Contador global de nodos explorados
 static int nodesExplored = 0;
 
+// Matriz de pesos posicionales (estrategia de Reversi)
+// Las esquinas valen mucho, las casillas X (adyacentes a esquinas) son peligrosas
+static const int POSITION_WEIGHTS[BOARD_SIZE][BOARD_SIZE] = {
+    {100, -20,  10,   5,   5,  10, -20, 100},
+    {-20, -50,  -2,  -2,  -2,  -2, -50, -20},
+    { 10,  -2,   5,   1,   1,   5,  -2,  10},
+    {  5,  -2,   1,   0,   0,   1,  -2,   5},
+    {  5,  -2,   1,   0,   0,   1,  -2,   5},
+    { 10,  -2,   5,   1,   1,   5,  -2,  10},
+    {-20, -50,  -2,  -2,  -2,  -2, -50, -20},
+    {100, -20,  10,   5,   5,  10, -20, 100}
+};
+
 /**
- * @brief Función de evaluación mejorada para Reversi
- *
- * Combina múltiples heurísticas:
- * - Diferencia de fichas (menos importante al inicio)
- * - Control de esquinas (muy importante)
- * - Movilidad (número de movimientos válidos)
- *
- * @param model El modelo del juego
- * @param player El jugador que queremos maximizar
- * @return Valor de evaluación (positivo es bueno para player)
+ * @brief Determina la profundidad de búsqueda según la fase del juego
+ */
+int getSearchDepth(GameModel& model)
+{
+    int totalPieces = 0;
+    for (int y = 0; y < BOARD_SIZE; y++)
+        for (int x = 0; x < BOARD_SIZE; x++)
+            if (model.board[y][x] != PIECE_EMPTY)
+                totalPieces++;
+
+    // Juego inicial (4-20 fichas): búsqueda moderada
+    if (totalPieces <= 20)
+        return EARLY_GAME_DEPTH;
+
+    // Final del juego (45+ fichas): búsqueda exhaustiva
+    if (totalPieces >= 45)
+        return END_GAME_DEPTH;
+
+    // Medio juego: búsqueda profunda
+    return MID_GAME_DEPTH;
+}
+
+/**
+ * @brief Función de evaluación avanzada para Reversi
  */
 int evaluate(GameModel& model, Player player)
 {
     Player opponent = (player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
-
-    // Peso para la diferencia de fichas
-    int scoreDiff = getScore(model, player) - getScore(model, opponent);
-
-    // Peso para las esquinas (muy valioso en Reversi)
-    int cornerValue = 0;
-    Square corners[4] = { {0, 0}, {0, BOARD_SIZE - 1}, {BOARD_SIZE - 1, 0}, {BOARD_SIZE - 1, BOARD_SIZE - 1} };
-
     Piece playerPiece = (player == PLAYER_WHITE) ? PIECE_WHITE : PIECE_BLACK;
     Piece opponentPiece = (player == PLAYER_WHITE) ? PIECE_BLACK : PIECE_WHITE;
 
-    for (int i = 0; i < 4; i++)
+    int totalPieces = 0;
+    for (int y = 0; y < BOARD_SIZE; y++)
+        for (int x = 0; x < BOARD_SIZE; x++)
+            if (model.board[y][x] != PIECE_EMPTY)
+                totalPieces++;
+
+    // === 1. PESOS POSICIONALES ===
+    int positionalValue = 0;
+    for (int y = 0; y < BOARD_SIZE; y++)
     {
-        Piece piece = getBoardPiece(model, corners[i]);
-        if (piece == playerPiece)
-            cornerValue += 25;
-        else if (piece == opponentPiece)
-            cornerValue -= 25;
+        for (int x = 0; x < BOARD_SIZE; x++)
+        {
+            if (model.board[y][x] == playerPiece)
+                positionalValue += POSITION_WEIGHTS[y][x];
+            else if (model.board[y][x] == opponentPiece)
+                positionalValue -= POSITION_WEIGHTS[y][x];
+        }
     }
 
-    // Movilidad: número de movimientos disponibles
+    // === 2. MOVILIDAD (muy importante en medio juego) ===
     GameModel tempModel;
     for (int y = 0; y < BOARD_SIZE; y++)
         for (int x = 0; x < BOARD_SIZE; x++)
             tempModel.board[y][x] = model.board[y][x];
+    tempModel.gameOver = false;
 
     tempModel.currentPlayer = player;
-    tempModel.gameOver = false;
     Moves playerMoves;
     getValidMoves(tempModel, playerMoves);
 
@@ -70,10 +102,60 @@ int evaluate(GameModel& model, Player player)
     Moves opponentMoves;
     getValidMoves(tempModel, opponentMoves);
 
-    int mobilityValue = (int)playerMoves.size() - (int)opponentMoves.size();
+    int mobilityValue = 0;
+    if (totalPieces < 50) // Movilidad importante hasta el final
+    {
+        mobilityValue = ((int)playerMoves.size() - (int)opponentMoves.size()) * 3;
 
-    // Combinar las heurísticas
-    return scoreDiff + cornerValue + (mobilityValue * 2);
+        // Penalizar severamente si el oponente no tiene movimientos (muy bueno)
+        if (opponentMoves.size() == 0 && playerMoves.size() > 0)
+            mobilityValue += 50;
+        // Bonus si tenemos muchos movimientos
+        if (playerMoves.size() > opponentMoves.size() * 2)
+            mobilityValue += 20;
+    }
+
+    // === 3. ESTABILIDAD DE FICHAS ===
+    // Fichas en bordes son más estables
+    int stabilityValue = 0;
+    for (int y = 0; y < BOARD_SIZE; y++)
+    {
+        for (int x = 0; x < BOARD_SIZE; x++)
+        {
+            bool isEdge = (x == 0 || x == BOARD_SIZE - 1 || y == 0 || y == BOARD_SIZE - 1);
+            if (isEdge)
+            {
+                if (model.board[y][x] == playerPiece)
+                    stabilityValue += 5;
+                else if (model.board[y][x] == opponentPiece)
+                    stabilityValue -= 5;
+            }
+        }
+    }
+
+    // === 4. PARIDAD (en end-game) ===
+    int parityValue = 0;
+    if (totalPieces >= 50) // Solo importante al final
+    {
+        int emptySquares = 64 - totalPieces;
+        // Queremos hacer el último movimiento
+        if (emptySquares % 2 == 1)
+            parityValue = (model.currentPlayer == player) ? 10 : -10;
+    }
+
+    // === 5. CONTEO DE FICHAS (más importante al final) ===
+    int scoreDiff = getScore(model, player) - getScore(model, opponent);
+    int pieceValue = 0;
+
+    if (totalPieces >= 50) // End-game: las fichas importan mucho
+        pieceValue = scoreDiff * 5;
+    else if (totalPieces >= 40) // Late mid-game
+        pieceValue = scoreDiff * 2;
+    else // Early-mid game: las fichas importan poco
+        pieceValue = scoreDiff / 2;
+
+    // Combinar todas las heurísticas
+    return positionalValue + mobilityValue + stabilityValue + parityValue + pieceValue;
 }
 
 /**
@@ -99,26 +181,61 @@ void simulateMove(GameModel& model, Square move, GameModel& newModel)
 }
 
 /**
- * @brief Implementa el algoritmo Minimax con poda Alfa-Beta
- *
- * @param model El modelo del juego actual
- * @param depth Profundidad actual en el árbol
- * @param alpha Mejor valor garantizado para MAX
- * @param beta Mejor valor garantizado para MIN
- * @param maximizingPlayer true si es turno de MAX, false si es MIN
- * @param aiPlayer El jugador que representa la IA
- * @return El valor minimax del nodo
+ * @brief Estructura para ordenar movimientos
+ */
+struct ScoredMove
+{
+    Square move;
+    int score;
+
+    bool operator<(const ScoredMove& other) const
+    {
+        return score > other.score; // Orden descendente
+    }
+};
+
+/**
+ * @brief Ordena movimientos por su valor heurístico (mejora poda alfa-beta)
+ */
+void orderMoves(GameModel& model, Moves& moves, Player aiPlayer, bool maximizing)
+{
+    std::vector<ScoredMove> scoredMoves;
+
+    for (auto move : moves)
+    {
+        GameModel newModel;
+        simulateMove(model, move, newModel);
+
+        ScoredMove sm;
+        sm.move = move;
+        sm.score = evaluate(newModel, aiPlayer);
+
+        if (!maximizing)
+            sm.score = -sm.score;
+
+        scoredMoves.push_back(sm);
+    }
+
+    std::sort(scoredMoves.begin(), scoredMoves.end());
+
+    moves.clear();
+    for (auto sm : scoredMoves)
+        moves.push_back(sm.move);
+}
+
+/**
+ * @brief Implementa el algoritmo Minimax con poda Alfa-Beta mejorado
  */
 int alphabeta(GameModel& model, int depth, int alpha, int beta,
     bool maximizingPlayer, Player aiPlayer)
 {
     nodesExplored++;
 
-    // Poda por cantidad de nodos: detener si exploramos demasiados nodos
+    // Poda por cantidad de nodos (emergencia)
     if (nodesExplored >= MAX_NODES)
         return evaluate(model, aiPlayer);
 
-    // Caso base: profundidad 0 o juego terminado
+    // Caso base
     if (depth == 0 || model.gameOver)
         return evaluate(model, aiPlayer);
 
@@ -134,7 +251,6 @@ int alphabeta(GameModel& model, int depth, int alpha, int beta,
         newModel.currentPlayer = (newModel.currentPlayer == PLAYER_WHITE)
             ? PLAYER_BLACK : PLAYER_WHITE;
 
-        // Verificar si el oponente tampoco tiene movimientos (fin del juego)
         Moves opponentMoves;
         getValidMoves(newModel, opponentMoves);
         if (opponentMoves.size() == 0)
@@ -143,13 +259,15 @@ int alphabeta(GameModel& model, int depth, int alpha, int beta,
             return evaluate(newModel, aiPlayer);
         }
 
-        // El oponente juega
         return alphabeta(newModel, depth - 1, alpha, beta, !maximizingPlayer, aiPlayer);
     }
 
+    // ORDENAR MOVIMIENTOS para mejorar poda (movimientos prometedores primero)
+    if (validMoves.size() > 1)
+        orderMoves(model, validMoves, aiPlayer, maximizingPlayer);
+
     if (maximizingPlayer)
     {
-        // Nodo MAX: maximizar el valor
         int maxEval = INT_MIN;
 
         for (auto move : validMoves)
@@ -160,7 +278,6 @@ int alphabeta(GameModel& model, int depth, int alpha, int beta,
             int eval = alphabeta(newModel, depth - 1, alpha, beta, false, aiPlayer);
             maxEval = (eval > maxEval) ? eval : maxEval;
 
-            // Poda alfa: si maxEval >= beta, podar
             alpha = (eval > alpha) ? eval : alpha;
             if (beta <= alpha)
                 break; // Poda Beta
@@ -170,7 +287,6 @@ int alphabeta(GameModel& model, int depth, int alpha, int beta,
     }
     else
     {
-        // Nodo MIN: minimizar el valor
         int minEval = INT_MAX;
 
         for (auto move : validMoves)
@@ -181,7 +297,6 @@ int alphabeta(GameModel& model, int depth, int alpha, int beta,
             int eval = alphabeta(newModel, depth - 1, alpha, beta, true, aiPlayer);
             minEval = (eval < minEval) ? eval : minEval;
 
-            // Poda beta: si minEval <= alpha, podar
             beta = (eval < beta) ? eval : beta;
             if (beta <= alpha)
                 break; // Poda Alfa
@@ -196,18 +311,17 @@ Square getBestMove(GameModel& model)
     Moves validMoves;
     getValidMoves(model, validMoves);
 
-    // Si no hay movimientos válidos, retornar uno inválido
     if (validMoves.size() == 0)
         return GAME_INVALID_SQUARE;
 
-    // Si solo hay un movimiento, retornarlo directamente
     if (validMoves.size() == 1)
         return validMoves[0];
 
-    // Reiniciar contador de nodos
     nodesExplored = 0;
 
-    // Buscar el mejor movimiento usando Minimax con Alfa-Beta
+    // Determinar profundidad según fase del juego
+    int searchDepth = getSearchDepth(model);
+
     Square bestMove = validMoves[0];
     int bestValue = INT_MIN;
     Player aiPlayer = model.currentPlayer;
@@ -215,13 +329,15 @@ Square getBestMove(GameModel& model)
     int alpha = INT_MIN;
     int beta = INT_MAX;
 
+    // Ordenar movimientos en el nodo raíz
+    orderMoves(model, validMoves, aiPlayer, true);
+
     for (auto move : validMoves)
     {
         GameModel newModel;
         simulateMove(model, move, newModel);
 
-        // Llamar a alphabeta desde la perspectiva del oponente (nivel MIN)
-        int moveValue = alphabeta(newModel, MAX_DEPTH - 1, alpha, beta, false, aiPlayer);
+        int moveValue = alphabeta(newModel, searchDepth - 1, alpha, beta, false, aiPlayer);
 
         if (moveValue > bestValue)
         {
@@ -229,7 +345,6 @@ Square getBestMove(GameModel& model)
             bestMove = move;
         }
 
-        // Actualizar alpha en el nodo raíz
         alpha = (moveValue > alpha) ? moveValue : alpha;
     }
 
