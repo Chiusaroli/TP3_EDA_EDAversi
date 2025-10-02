@@ -25,6 +25,8 @@
 #define PIECE_CENTER (SQUARE_SIZE / 2)
 #define PIECE_RADIUS (SQUARE_SIZE * 80 / 100 / 2)
 
+#define VALID_MOVE_RADIUS (SQUARE_SIZE * 30 / 100 / 2)  // Radio para indicador de movimiento válido
+
 #define BOARD_X 40
 #define BOARD_Y 40
 #define BOARD_CONTENT_SIZE (BOARD_SIZE * SQUARE_SIZE)
@@ -77,14 +79,14 @@ void freeView()
  * @param s The string.
  */
 static void drawCenteredText(Vector2 position,
-                             int fontSize,
-                             std::string s)
+    int fontSize,
+    std::string s)
 {
     DrawText(s.c_str(),
-             (int)position.x - MeasureText(s.c_str(), fontSize) / 2,
-             (int)position.y - fontSize / 2,
-             fontSize,
-             BROWN);
+        (int)position.x - MeasureText(s.c_str(), fontSize) / 2,
+        (int)position.y - fontSize / 2,
+        fontSize,
+        BROWN);
 }
 
 /**
@@ -94,8 +96,8 @@ static void drawCenteredText(Vector2 position,
  * @param score The score.
  */
 static void drawScore(std::string label,
-                      Vector2 position,
-                      int score)
+    Vector2 position,
+    int score)
 {
     std::string s = label + std::to_string(score);
 
@@ -109,7 +111,7 @@ static void drawScore(std::string label,
  * @param time The number of seconds of the timer.
  */
 static void drawTimer(Vector2 position,
-                      double time)
+    double time)
 {
     int totalSeconds = (int)time;
 
@@ -136,19 +138,19 @@ static void drawTimer(Vector2 position,
  * @param label The text of the button
  */
 static void drawButton(Vector2 position,
-                       std::string label,
-                       Color backgroundColor)
+    std::string label,
+    Color backgroundColor)
 {
     DrawRectangle(position.x - INFO_BUTTON_WIDTH / 2,
-                  position.y - INFO_BUTTON_HEIGHT / 2,
-                  INFO_BUTTON_WIDTH,
-                  INFO_BUTTON_HEIGHT,
-                  backgroundColor);
+        position.y - INFO_BUTTON_HEIGHT / 2,
+        INFO_BUTTON_WIDTH,
+        INFO_BUTTON_HEIGHT,
+        backgroundColor);
 
-    drawCenteredText({position.x,
-                      position.y},
-                     SUBTITLE_FONT_SIZE,
-                     label.c_str());
+    drawCenteredText({ position.x,
+                      position.y },
+        SUBTITLE_FONT_SIZE,
+        label.c_str());
 }
 
 /**
@@ -161,12 +163,12 @@ static bool isMousePointerOverButton(Vector2 position)
     Vector2 mousePosition = GetMousePosition();
 
     return ((mousePosition.x >= (position.x - INFO_BUTTON_WIDTH / 2)) &&
-            (mousePosition.x < (position.x + INFO_BUTTON_WIDTH / 2)) &&
-            (mousePosition.y >= (position.y - INFO_BUTTON_HEIGHT / 2)) &&
-            (mousePosition.y < (position.y + INFO_BUTTON_HEIGHT / 2)));
+        (mousePosition.x < (position.x + INFO_BUTTON_WIDTH / 2)) &&
+        (mousePosition.y >= (position.y - INFO_BUTTON_HEIGHT / 2)) &&
+        (mousePosition.y < (position.y + INFO_BUTTON_HEIGHT / 2)));
 }
 
-void drawView(GameModel &model)
+void drawView(GameModel& model)
 {
     BeginDrawing();
 
@@ -179,20 +181,25 @@ void drawView(GameModel &model)
         OUTERBORDER_SIZE,
         BLACK);
 
+    // Obtener movimientos válidos para el jugador actual
+    Moves validMoves;
+    if (!model.gameOver)
+        getValidMoves(model, validMoves);
+
     for (int y = 0; y < BOARD_SIZE; y++)
         for (int x = 0; x < BOARD_SIZE; x++)
         {
-            Square square = {x, y};
+            Square square = { x, y };
 
             Vector2 position = {
                 BOARD_X + (float)square.x * SQUARE_SIZE,
-                BOARD_Y + (float)square.y * SQUARE_SIZE};
+                BOARD_Y + (float)square.y * SQUARE_SIZE };
 
             DrawRectangleRounded(
-                {position.x + SQUARE_CONTENT_OFFSET,
+                { position.x + SQUARE_CONTENT_OFFSET,
                  position.y + SQUARE_CONTENT_OFFSET,
                  SQUARE_CONTENT_SIZE,
-                 SQUARE_CONTENT_SIZE},
+                 SQUARE_CONTENT_SIZE },
                 0.2F,
                 6,
                 DARKGREEN);
@@ -200,46 +207,74 @@ void drawView(GameModel &model)
             Piece piece = getBoardPiece(model, square);
 
             if (piece != PIECE_EMPTY)
+            {
                 DrawCircle((int)position.x + PIECE_CENTER,
-                           (int)position.y + PIECE_CENTER,
-                           PIECE_RADIUS,
-                           (piece == PIECE_WHITE) ? WHITE : BLACK);
+                    (int)position.y + PIECE_CENTER,
+                    PIECE_RADIUS,
+                    (piece == PIECE_WHITE) ? WHITE : BLACK);
+            }
+            else if (!model.gameOver && model.currentPlayer == model.humanPlayer)
+            {
+                // Verificar si este cuadro es un movimiento válido
+                bool isValidMove = false;
+                for (const auto& move : validMoves)
+                {
+                    if (move.x == square.x && move.y == square.y)
+                    {
+                        isValidMove = true;
+                        break;
+                    }
+                }
+
+                // Dibujar indicador si es un movimiento válido
+                if (isValidMove)
+                {
+                    Color indicatorColor = (model.currentPlayer == PLAYER_BLACK)
+                        ? Color{ 50, 50, 50, 150 }    // Negro semi-transparente
+                    : Color{ 255, 255, 255, 150 }; // Blanco semi-transparente
+
+                    DrawCircle((int)position.x + PIECE_CENTER,
+                        (int)position.y + PIECE_CENTER,
+                        VALID_MOVE_RADIUS,
+                        indicatorColor);
+                }
+            }
         }
 
     drawScore("Black score: ",
-              {INFO_CENTERED_X,
-               INFO_WHITE_SCORE_Y},
-              getScore(model,
-                           PLAYER_BLACK));
-    drawTimer({INFO_CENTERED_X,
-               INFO_WHITE_TIME_Y},
-              getTimer(model,
-                           PLAYER_BLACK));
-    drawCenteredText({INFO_CENTERED_X,
-                      INFO_TITLE_Y},
-                     TITLE_FONT_SIZE,
-                     GAME_NAME);
+        { INFO_CENTERED_X,
+         INFO_WHITE_SCORE_Y },
+        getScore(model,
+            PLAYER_BLACK));
+    drawTimer({ INFO_CENTERED_X,
+               INFO_WHITE_TIME_Y },
+        getTimer(model,
+            PLAYER_BLACK));
+    drawCenteredText({ INFO_CENTERED_X,
+                      INFO_TITLE_Y },
+        TITLE_FONT_SIZE,
+        GAME_NAME);
     drawScore("White score: ",
-              {INFO_CENTERED_X,
-               INFO_BLACK_SCORE_Y},
-              getScore(model,
-                           PLAYER_WHITE));
-    drawTimer({INFO_CENTERED_X,
-               INFO_BLACK_TIME_Y},
-              getTimer(model,
-                           PLAYER_WHITE));
+        { INFO_CENTERED_X,
+         INFO_BLACK_SCORE_Y },
+        getScore(model,
+            PLAYER_WHITE));
+    drawTimer({ INFO_CENTERED_X,
+               INFO_BLACK_TIME_Y },
+        getTimer(model,
+            PLAYER_WHITE));
 
     if (model.gameOver)
     {
-        drawButton({INFO_PLAYBLACK_BUTTON_X,
-                    INFO_PLAYBLACK_BUTTON_Y},
-                   "Play black",
-                   BLACK);
+        drawButton({ INFO_PLAYBLACK_BUTTON_X,
+                    INFO_PLAYBLACK_BUTTON_Y },
+            "Play black",
+            BLACK);
 
-        drawButton({INFO_PLAYWHITE_BUTTON_X,
-                    INFO_PLAYWHITE_BUTTON_Y},
-                   "Play white",
-                   WHITE);
+        drawButton({ INFO_PLAYWHITE_BUTTON_X,
+                    INFO_PLAYWHITE_BUTTON_Y },
+            "Play white",
+            WHITE);
     }
 
     EndDrawing();
@@ -248,8 +283,8 @@ void drawView(GameModel &model)
 Square getSquareOnMousePointer()
 {
     Vector2 mousePosition = GetMousePosition();
-    Square square = {(int)floor((mousePosition.x - BOARD_X) / SQUARE_SIZE),
-                     (int)floor((mousePosition.y - BOARD_Y) / SQUARE_SIZE)};
+    Square square = { (int)floor((mousePosition.x - BOARD_X) / SQUARE_SIZE),
+                     (int)floor((mousePosition.y - BOARD_Y) / SQUARE_SIZE) };
 
     if (isSquareValid(square))
         return square;
@@ -259,12 +294,12 @@ Square getSquareOnMousePointer()
 
 bool isMousePointerOverPlayBlackButton()
 {
-    return isMousePointerOverButton({INFO_PLAYBLACK_BUTTON_X,
-                                     INFO_PLAYBLACK_BUTTON_Y});
+    return isMousePointerOverButton({ INFO_PLAYBLACK_BUTTON_X,
+                                     INFO_PLAYBLACK_BUTTON_Y });
 }
 
 bool isMousePointerOverPlayWhiteButton()
 {
-    return isMousePointerOverButton({INFO_PLAYWHITE_BUTTON_X,
-                                     INFO_PLAYWHITE_BUTTON_Y});
+    return isMousePointerOverButton({ INFO_PLAYWHITE_BUTTON_X,
+                                     INFO_PLAYWHITE_BUTTON_Y });
 }
