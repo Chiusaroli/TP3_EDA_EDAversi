@@ -20,16 +20,16 @@
 // Contador global de nodos explorados
 static int nodesExplored = 0;
 
-// Matriz de pesos posicionales (estrategia de Reversi)
+// Matriz de pesos posicionales CORREGIDA (estrategia óptima de Reversi)
 static const int POSITION_WEIGHTS[BOARD_SIZE][BOARD_SIZE] = {
-    {100, -20,  10,   5,   5,  10, -20, 100},
-    {-20, -50,  -2,  -2,  -2,  -2, -50, -20},
-    { 10,  -2,   5,   1,   1,   5,  -2,  10},
-    {  5,  -2,   1,   0,   0,   1,  -2,   5},
-    {  5,  -2,   1,   0,   0,   1,  -2,   5},
-    { 10,  -2,   5,   1,   1,   5,  -2,  10},
-    {-20, -50,  -2,  -2,  -2,  -2, -50, -20},
-    {100, -20,  10,   5,   5,  10, -20, 100}
+    {120, -20,  20,   5,   5,  20, -20, 120},
+    {-20, -40,  -5,  -5,  -5,  -5, -40, -20},
+    { 20,  -5,  15,   3,   3,  15,  -5,  20},
+    {  5,  -5,   3,   3,   3,   3,  -5,   5},
+    {  5,  -5,   3,   3,   3,   3,  -5,   5},
+    { 20,  -5,  15,   3,   3,  15,  -5,  20},
+    {-20, -40,  -5,  -5,  -5,  -5, -40, -20},
+    {120, -20,  20,   5,   5,  20, -20, 120}
 };
 
 // Tabla de transposiciones
@@ -53,7 +53,68 @@ uint64_t hashBoard(GameModel& model)
 }
 
 /**
- * @brief Función de evaluación optimizada (un solo recorrido del tablero)
+ * @brief Cuenta movimientos válidos de forma eficiente
+ */
+int countMoves(GameModel& model, Player player)
+{
+    Piece currentPiece = (player == PLAYER_WHITE) ? PIECE_WHITE : PIECE_BLACK;
+    Piece opponentPiece = (player == PLAYER_WHITE) ? PIECE_BLACK : PIECE_WHITE;
+
+    int directions[8][2] = {
+        {-1, -1}, {-1, 0}, {-1, 1},
+        {0, -1},           {0, 1},
+        {1, -1},  {1, 0},  {1, 1}
+    };
+
+    int moveCount = 0;
+
+    for (int y = 0; y < BOARD_SIZE; y++)
+    {
+        for (int x = 0; x < BOARD_SIZE; x++)
+        {
+            if (model.board[y][x] != PIECE_EMPTY)
+                continue;
+
+            for (int d = 0; d < 8; d++)
+            {
+                int dx = directions[d][0];
+                int dy = directions[d][1];
+                int nx = x + dx;
+                int ny = y + dy;
+                bool foundOpponent = false;
+
+                while (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE)
+                {
+                    Piece piece = model.board[ny][nx];
+
+                    if (piece == PIECE_EMPTY)
+                        break;
+
+                    if (piece == opponentPiece)
+                    {
+                        foundOpponent = true;
+                        nx += dx;
+                        ny += dy;
+                        continue;
+                    }
+
+                    if (piece == currentPiece && foundOpponent)
+                    {
+                        moveCount++;
+                        goto nextSquare;  // Este movimiento es válido, pasar al siguiente
+                    }
+                    break;
+                }
+            }
+        nextSquare:;
+        }
+    }
+
+    return moveCount;
+}
+
+/**
+ * @brief Función de evaluación MEJORADA
  */
 int evaluate(GameModel& model, Player player)
 {
@@ -63,11 +124,12 @@ int evaluate(GameModel& model, Player player)
 
     int totalPieces = 0;
     int positionalValue = 0;
-    int stabilityValue = 0;
     int playerCount = 0;
     int opponentCount = 0;
+    int cornerBonus = 0;
+    int edgeBonus = 0;
 
-    // UN SOLO RECORRIDO para todas las heurísticas basadas en posición
+    // Recorrido único del tablero
     for (int y = 0; y < BOARD_SIZE; y++)
     {
         for (int x = 0; x < BOARD_SIZE; x++)
@@ -86,68 +148,164 @@ int evaluate(GameModel& model, Player player)
                 opponentCount++;
 
             // Pesos posicionales
+            int weight = POSITION_WEIGHTS[y][x];
             if (piece == playerPiece)
-                positionalValue += POSITION_WEIGHTS[y][x];
+                positionalValue += weight;
             else
-                positionalValue -= POSITION_WEIGHTS[y][x];
+                positionalValue -= weight;
 
-            // Estabilidad de bordes
-            bool isEdge = (x == 0 || x == BOARD_SIZE - 1 || y == 0 || y == BOARD_SIZE - 1);
-            if (isEdge)
+            // BONUS ESPECIAL POR ESQUINAS
+            bool isCorner = ((x == 0 || x == 7) && (y == 0 || y == 7));
+            if (isCorner)
             {
                 if (piece == playerPiece)
-                    stabilityValue += 5;
+                    cornerBonus += 50;
                 else
-                    stabilityValue -= 5;
+                    cornerBonus -= 50;
+            }
+
+            // Bonus por bordes estables (si hay esquina del mismo color)
+            bool isEdge = (x == 0 || x == 7 || y == 0 || y == 7);
+            if (isEdge && !isCorner)
+            {
+                // Verificar si hay una esquina ocupada en esta fila/columna
+                bool hasCornerSupport = false;
+
+                if (x == 0 || x == 7)
+                {
+                    if ((model.board[0][x] == piece) || (model.board[7][x] == piece))
+                        hasCornerSupport = true;
+                }
+                if (y == 0 || y == 7)
+                {
+                    if ((model.board[y][0] == piece) || (model.board[y][7] == piece))
+                        hasCornerSupport = true;
+                }
+
+                if (hasCornerSupport)
+                {
+                    if (piece == playerPiece)
+                        edgeBonus += 5;
+                    else
+                        edgeBonus -= 5;
+                }
             }
         }
     }
 
-    // === MOVILIDAD (solo en mid-game) ===
+    // === MOVILIDAD (crucial en mid-game) ===
     int mobilityValue = 0;
     if (totalPieces < 50)
     {
-        GameModel tempModel;
-        memcpy(tempModel.board, model.board, sizeof(model.board));
-        tempModel.gameOver = false;
+        int playerMobility = countMoves(model, player);
+        int opponentMobility = countMoves(model, opponent);
 
-        tempModel.currentPlayer = player;
-        Moves playerMoves;
-        getValidMoves(tempModel, playerMoves);
+        mobilityValue = (playerMobility - opponentMobility) * 5;
 
-        tempModel.currentPlayer = opponent;
-        Moves opponentMoves;
-        getValidMoves(tempModel, opponentMoves);
+        // Penalización severa si el oponente no tiene movimientos
+        if (opponentMobility == 0 && playerMobility > 0)
+            mobilityValue += 100;
 
-        mobilityValue = ((int)playerMoves.size() - (int)opponentMoves.size()) * 3;
-
-        if (opponentMoves.size() == 0 && playerMoves.size() > 0)
-            mobilityValue += 50;
-        if (playerMoves.size() > opponentMoves.size() * 2)
-            mobilityValue += 20;
+        // Bonus si tenemos el doble de movilidad
+        if (playerMobility > opponentMobility * 2)
+            mobilityValue += 30;
     }
 
-    // === PARIDAD (end-game) ===
+    // === CONTEO DE FICHAS (estrategia por fase) ===
+    int scoreDiff = playerCount - opponentCount;
+    int pieceValue = 0;
+
+    if (totalPieces >= 52)  // Endgame final (últimas 12 fichas)
+    {
+        // En endgame, cada ficha cuenta MUCHO
+        pieceValue = scoreDiff * 15;
+    }
+    else if (totalPieces >= 45)  // Late game
+    {
+        pieceValue = scoreDiff * 8;
+    }
+    else if (totalPieces >= 35)  // Mid-late game
+    {
+        pieceValue = scoreDiff * 3;
+    }
+    else if (totalPieces >= 20)  // Mid game
+    {
+        // En mid game, tener MENOS fichas puede ser mejor
+        pieceValue = scoreDiff * -1;
+    }
+    else  // Early game
+    {
+        // En early game, minimizar fichas es buena estrategia
+        pieceValue = scoreDiff * -3;
+    }
+
+    // === PARIDAD (solo en late game) ===
     int parityValue = 0;
     if (totalPieces >= 50)
     {
         int emptySquares = 64 - totalPieces;
+        // Si quedan pocas casillas y hay paridad favorable
         if (emptySquares % 2 == 1)
-            parityValue = (model.currentPlayer == player) ? 10 : -10;
+        {
+            // Queremos tener el último movimiento
+            parityValue = (model.currentPlayer == player) ? 15 : -15;
+        }
     }
 
-    // === CONTEO DE FICHAS (peso según fase) ===
-    int scoreDiff = playerCount - opponentCount;
-    int pieceValue = 0;
+    // === FRONTERA (fichas expuestas - queremos MENOS en early/mid game) ===
+    int frontierValue = 0;
+    if (totalPieces < 45)
+    {
+        int playerFrontier = 0;
+        int opponentFrontier = 0;
 
-    if (totalPieces >= 50)
-        pieceValue = scoreDiff * 5;
-    else if (totalPieces >= 40)
-        pieceValue = scoreDiff * 2;
-    else
-        pieceValue = scoreDiff / 2;
+        for (int y = 0; y < BOARD_SIZE; y++)
+        {
+            for (int x = 0; x < BOARD_SIZE; x++)
+            {
+                Piece piece = model.board[y][x];
+                if (piece == PIECE_EMPTY)
+                    continue;
 
-    return positionalValue + mobilityValue + stabilityValue + parityValue + pieceValue;
+                // Verificar si tiene al menos una casilla vacía adyacente
+                bool hasFreeNeighbor = false;
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        if (dx == 0 && dy == 0)
+                            continue;
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE)
+                        {
+                            if (model.board[ny][nx] == PIECE_EMPTY)
+                            {
+                                hasFreeNeighbor = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hasFreeNeighbor)
+                        break;
+                }
+
+                if (hasFreeNeighbor)
+                {
+                    if (piece == playerPiece)
+                        playerFrontier++;
+                    else
+                        opponentFrontier++;
+                }
+            }
+        }
+
+        // Penalizar tener muchas fichas en la frontera
+        frontierValue = (opponentFrontier - playerFrontier) * 2;
+    }
+
+    return positionalValue + mobilityValue + pieceValue +
+        parityValue + cornerBonus + edgeBonus + frontierValue;
 }
 
 /**
@@ -184,9 +342,9 @@ struct ScoredMove
 };
 
 /**
- * @brief Ordena movimientos usando solo heurística barata (pesos posicionales)
+ * @brief Ordena movimientos con heurística mejorada
  */
-void orderMoves(Moves& moves, bool maximizing)
+void orderMoves(GameModel& model, Moves& moves, bool maximizing)
 {
     if (moves.size() <= 1)
         return;
@@ -198,6 +356,11 @@ void orderMoves(Moves& moves, bool maximizing)
         ScoredMove sm;
         sm.move = move;
         sm.score = POSITION_WEIGHTS[move.y][move.x];
+
+        // Bonus extra por esquinas
+        bool isCorner = ((move.x == 0 || move.x == 7) && (move.y == 0 || move.y == 7));
+        if (isCorner)
+            sm.score += 200;
 
         if (!maximizing)
             sm.score = -sm.score;
@@ -270,7 +433,7 @@ int alphabeta(GameModel& model, int depth, int alpha, int beta,
     }
 
     // Ordenar movimientos para mejorar poda
-    orderMoves(validMoves, maximizingPlayer);
+    orderMoves(model, validMoves, maximizingPlayer);
 
     int bestValue;
 
@@ -341,7 +504,6 @@ Square getBestMove(GameModel& model)
     Player aiPlayer = model.currentPlayer;
 
     // BÚSQUEDA ITERATIVA EN PROFUNDIDAD
-    // Explora profundidad 1, 2, 3... hasta alcanzar el límite de nodos
     for (int depth = 1; depth <= 20; depth++)
     {
         // Detenerse al 90% del límite para evitar cortes abruptos
@@ -353,7 +515,7 @@ Square getBestMove(GameModel& model)
         int bestValue = INT_MIN;
 
         // Ordenar movimientos en el nodo raíz
-        orderMoves(validMoves, true);
+        orderMoves(model, validMoves, true);
 
         for (auto move : validMoves)
         {
@@ -374,9 +536,6 @@ Square getBestMove(GameModel& model)
             if (nodesExplored >= MAX_NODES * 0.9)
                 break;
         }
-
-        // Si completamos esta profundidad sin problemas, continuar
-        // Si nos quedamos sin nodos, ya tenemos el mejor movimiento hasta ahora
     }
 
     return bestMove;
