@@ -1,27 +1,66 @@
 /**
- * @brief Implements the Reversi game AI with Alpha-Beta Pruning
- * @author Marc S. Ressl
- *
- * @copyright Copyright (c) 2023-2024
+ * @brief Advanced AI implementation for Reversi
+ * @author Based on "Estrategia Reversista" by Lea Tosti
  */
 
-#include <cstdlib>
-#include <climits>
-#include <algorithm>
-#include <cstring>
-#include <unordered_map>
-
 #include "ai.h"
-#include "controller.h"
+#include <algorithm>
+#include <limits>
+#include <cmath>
+#include <array>
 
- // Límite de nodos configurables
-#define MAX_NODES 100000
+ // ==================== CONSTANTES DE EVALUACIÓN ====================
 
-// Contador global de nodos explorados
-static int nodesExplored = 0;
+ // Pesos para las diferentes fases del juego
+namespace Weights {
+    // Early game (primeros ~20 movimientos)
+    namespace Early {
+        constexpr double MOBILITY = 10.0;
+        constexpr double POTENTIAL_MOBILITY = 5.0;
+        constexpr double CORNER_CONTROL = 25.0;
+        constexpr double STABILITY = 8.0;
+        constexpr double EDGE_STABILITY = 5.0;
+        constexpr double PIECE_COUNT = -2.0;  // Negativo: queremos pocas fichas
+        constexpr double FRONTIER = -5.0;     // Penalizar fichas externas
+        constexpr double POSITION = 3.0;
+    }
 
-// Matriz de pesos posicionales (estrategia de Reversi)
-static const int POSITION_WEIGHTS[BOARD_SIZE][BOARD_SIZE] = {
+    // Mid game (movimientos ~20-40)
+    namespace Mid {
+        constexpr double MOBILITY = 8.0;
+        constexpr double POTENTIAL_MOBILITY = 4.0;
+        constexpr double CORNER_CONTROL = 30.0;
+        constexpr double STABILITY = 15.0;
+        constexpr double EDGE_STABILITY = 10.0;
+        constexpr double PIECE_COUNT = 0.0;
+        constexpr double FRONTIER = -4.0;
+        constexpr double POSITION = 2.0;
+        constexpr double PARITY = 5.0;
+    }
+
+    // End game (últimos ~20 movimientos)
+    namespace End {
+        constexpr double MOBILITY = 5.0;
+        constexpr double POTENTIAL_MOBILITY = 2.0;
+        constexpr double CORNER_CONTROL = 40.0;
+        constexpr double STABILITY = 25.0;
+        constexpr double EDGE_STABILITY = 15.0;
+        constexpr double PIECE_COUNT = 10.0;  // Positivo: contar fichas
+        constexpr double FRONTIER = -2.0;
+        constexpr double POSITION = 1.0;
+        constexpr double PARITY = 15.0;
+    }
+}
+
+// Direcciones para buscar fichas (8 direcciones)
+const std::array<std::pair<int, int>, 8> DIRECTIONS = { {
+    {-1, -1}, {-1, 0}, {-1, 1},
+    {0, -1},           {0, 1},
+    {1, -1},  {1, 0},  {1, 1}
+} };
+
+// Matriz de valores posicionales (según importancia estratégica)
+const int POSITION_WEIGHTS[BOARD_SIZE][BOARD_SIZE] = {
     {100, -20,  10,   5,   5,  10, -20, 100},
     {-20, -50,  -2,  -2,  -2,  -2, -50, -20},
     { 10,  -2,   5,   1,   1,   5,  -2,  10},
@@ -32,351 +71,500 @@ static const int POSITION_WEIGHTS[BOARD_SIZE][BOARD_SIZE] = {
     {100, -20,  10,   5,   5,  10, -20, 100}
 };
 
-// Tabla de transposiciones
-struct TranspositionEntry {
-    int value;
-    int depth;
+// Casillas especiales
+const std::array<Square, 4> CORNERS = { {
+    {0, 0}, {0, 7}, {7, 0}, {7, 7}
+} };
+
+const std::array<Square, 8> X_SQUARES = { {
+    {1, 1}, {1, 6}, {6, 1}, {6, 6},  // Casillas X (diagonales a esquinas)
+    {0, 1}, {1, 0}, {0, 6}, {1, 7},  // Casillas C (adyacentes a esquinas)
+} };
+
+// ==================== ESTRUCTURAS AUXILIARES ====================
+
+struct EvaluationWeights {
+    double mobility;
+    double potentialMobility;
+    double cornerControl;
+    double stability;
+    double edgeStability;
+    double pieceCount;
+    double frontier;
+    double position;
+    double parity;
 };
 
-static std::unordered_map<uint64_t, TranspositionEntry> ttable;
+// ==================== FUNCIONES AUXILIARES ====================
 
-/**
- * @brief Genera hash del tablero para transposiciones
- */
-uint64_t hashBoard(GameModel& model)
-{
-    uint64_t hash = 0;
-    for (int y = 0; y < BOARD_SIZE; y++)
-        for (int x = 0; x < BOARD_SIZE; x++)
-            hash = hash * 3 + model.board[y][x];
-    return hash ^ ((uint64_t)model.currentPlayer << 60);
+inline Piece getOpponentPiece(Piece piece) {
+    return (piece == PIECE_BLACK) ? PIECE_WHITE : PIECE_BLACK;
 }
 
-/**
- * @brief Función de evaluación optimizada (un solo recorrido del tablero)
- */
-int evaluate(GameModel& model, Player player)
-{
-    Player opponent = (player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
-    Piece playerPiece = (player == PLAYER_WHITE) ? PIECE_WHITE : PIECE_BLACK;
-    Piece opponentPiece = (player == PLAYER_WHITE) ? PIECE_BLACK : PIECE_WHITE;
+inline Player getOpponentPlayer(Player player) {
+    return (player == PLAYER_BLACK) ? PLAYER_WHITE : PLAYER_BLACK;
+}
 
-    int totalPieces = 0;
-    int positionalValue = 0;
-    int stabilityValue = 0;
-    int playerCount = 0;
-    int opponentCount = 0;
+inline int countPieces(GameModel& model, Piece piece) {
+    int count = 0;
+    for (int y = 0; y < BOARD_SIZE; y++) {
+        for (int x = 0; x < BOARD_SIZE; x++) {
+            if (model.board[y][x] == piece)
+                count++;
+        }
+    }
+    return count;
+}
 
-    // UN SOLO RECORRIDO para todas las heurísticas basadas en posición
-    for (int y = 0; y < BOARD_SIZE; y++)
-    {
-        for (int x = 0; x < BOARD_SIZE; x++)
-        {
-            Piece piece = model.board[y][x];
+inline int getTotalPieces(GameModel& model) {
+    return countPieces(model, PIECE_BLACK) + countPieces(model, PIECE_WHITE);
+}
 
-            if (piece == PIECE_EMPTY)
-                continue;
+inline int getGamePhase(GameModel& model) {
+    int totalPieces = getTotalPieces(model);
+    if (totalPieces < 24) return 0;      // Early game
+    if (totalPieces < 44) return 1;      // Mid game
+    return 2;                             // End game
+}
 
-            totalPieces++;
+EvaluationWeights getWeightsForPhase(int phase) {
+    EvaluationWeights weights;
 
-            // Contar fichas
-            if (piece == playerPiece)
-                playerCount++;
-            else
-                opponentCount++;
+    if (phase == 0) {  // Early game
+        weights.mobility = Weights::Early::MOBILITY;
+        weights.potentialMobility = Weights::Early::POTENTIAL_MOBILITY;
+        weights.cornerControl = Weights::Early::CORNER_CONTROL;
+        weights.stability = Weights::Early::STABILITY;
+        weights.edgeStability = Weights::Early::EDGE_STABILITY;
+        weights.pieceCount = Weights::Early::PIECE_COUNT;
+        weights.frontier = Weights::Early::FRONTIER;
+        weights.position = Weights::Early::POSITION;
+        weights.parity = 0.0;
+    }
+    else if (phase == 1) {  // Mid game
+        weights.mobility = Weights::Mid::MOBILITY;
+        weights.potentialMobility = Weights::Mid::POTENTIAL_MOBILITY;
+        weights.cornerControl = Weights::Mid::CORNER_CONTROL;
+        weights.stability = Weights::Mid::STABILITY;
+        weights.edgeStability = Weights::Mid::EDGE_STABILITY;
+        weights.pieceCount = Weights::Mid::PIECE_COUNT;
+        weights.frontier = Weights::Mid::FRONTIER;
+        weights.position = Weights::Mid::POSITION;
+        weights.parity = Weights::Mid::PARITY;
+    }
+    else {  // End game
+        weights.mobility = Weights::End::MOBILITY;
+        weights.potentialMobility = Weights::End::POTENTIAL_MOBILITY;
+        weights.cornerControl = Weights::End::CORNER_CONTROL;
+        weights.stability = Weights::End::STABILITY;
+        weights.edgeStability = Weights::End::EDGE_STABILITY;
+        weights.pieceCount = Weights::End::PIECE_COUNT;
+        weights.frontier = Weights::End::FRONTIER;
+        weights.position = Weights::End::POSITION;
+        weights.parity = Weights::End::PARITY;
+    }
 
-            // Pesos posicionales
-            if (piece == playerPiece)
-                positionalValue += POSITION_WEIGHTS[y][x];
-            else
-                positionalValue -= POSITION_WEIGHTS[y][x];
+    return weights;
+}
 
-            // Estabilidad de bordes
-            bool isEdge = (x == 0 || x == BOARD_SIZE - 1 || y == 0 || y == BOARD_SIZE - 1);
-            if (isEdge)
-            {
-                if (piece == playerPiece)
-                    stabilityValue += 5;
-                else
-                    stabilityValue -= 5;
+// ==================== MOVILIDAD ====================
+
+int countMobility(GameModel& model, Player player) {
+    Player originalPlayer = model.currentPlayer;
+    model.currentPlayer = player;
+
+    Moves validMoves;
+    getValidMoves(model, validMoves);
+    int mobility = validMoves.size();
+
+    model.currentPlayer = originalPlayer;
+    return mobility;
+}
+
+// Movilidad potencial: cuenta casillas vacías adyacentes a fichas del oponente
+int countPotentialMobility(GameModel& model, Player player) {
+    Piece opponentPiece = (player == PLAYER_BLACK) ? PIECE_WHITE : PIECE_BLACK;
+    int potential = 0;
+
+    for (int y = 0; y < BOARD_SIZE; y++) {
+        for (int x = 0; x < BOARD_SIZE; x++) {
+            if (model.board[y][x] == PIECE_EMPTY) {
+                // Verificar si hay una ficha oponente adyacente
+                for (const auto& dir : DIRECTIONS) {
+                    int nx = x + dir.first;
+                    int ny = y + dir.second;
+
+                    if (isSquareValid({ nx, ny }) &&
+                        model.board[ny][nx] == opponentPiece) {
+                        potential++;
+                        break;
+                    }
+                }
             }
         }
     }
 
-    // === MOVILIDAD (solo en mid-game) ===
-    int mobilityValue = 0;
-    if (totalPieces < 50)
-    {
-        GameModel tempModel;
-        memcpy(tempModel.board, model.board, sizeof(model.board));
-        tempModel.gameOver = false;
-
-        tempModel.currentPlayer = player;
-        Moves playerMoves;
-        getValidMoves(tempModel, playerMoves);
-
-        tempModel.currentPlayer = opponent;
-        Moves opponentMoves;
-        getValidMoves(tempModel, opponentMoves);
-
-        mobilityValue = ((int)playerMoves.size() - (int)opponentMoves.size()) * 3;
-
-        if (opponentMoves.size() == 0 && playerMoves.size() > 0)
-            mobilityValue += 50;
-        if (playerMoves.size() > opponentMoves.size() * 2)
-            mobilityValue += 20;
-    }
-
-    // === PARIDAD (end-game) ===
-    int parityValue = 0;
-    if (totalPieces >= 50)
-    {
-        int emptySquares = 64 - totalPieces;
-        if (emptySquares % 2 == 1)
-            parityValue = (model.currentPlayer == player) ? 10 : -10;
-    }
-
-    // === CONTEO DE FICHAS (peso según fase) ===
-    int scoreDiff = playerCount - opponentCount;
-    int pieceValue = 0;
-
-    if (totalPieces >= 50)
-        pieceValue = scoreDiff * 5;
-    else if (totalPieces >= 40)
-        pieceValue = scoreDiff * 2;
-    else
-        pieceValue = scoreDiff / 2;
-
-    return positionalValue + mobilityValue + stabilityValue + parityValue + pieceValue;
+    return potential;
 }
 
-/**
- * @brief Copia el tablero de forma optimizada
- */
-void copyBoard(GameModel& source, GameModel& dest)
-{
-    memcpy(dest.board, source.board, sizeof(source.board));
-    dest.currentPlayer = source.currentPlayer;
-    dest.gameOver = source.gameOver;
+// ==================== FICHAS ESTABLES ====================
+
+// Verifica si una ficha es estable (no puede ser volteada)
+bool isStable(GameModel& model, Square square) {
+    Piece piece = model.board[square.y][square.x];
+    if (piece == PIECE_EMPTY) return false;
+
+    // Las esquinas siempre son estables
+    for (const auto& corner : CORNERS) {
+        if (square.x == corner.x && square.y == corner.y)
+            return true;
+    }
+
+    // Verificar estabilidad por todas las direcciones
+    bool stable = true;
+
+    for (const auto& dir : DIRECTIONS) {
+        bool stableInDirection = false;
+
+        // Verificar hacia un lado
+        int x = square.x - dir.first;
+        int y = square.y - dir.second;
+        bool reachedEdge1 = false;
+        while (isSquareValid({ x, y })) {
+            if (model.board[y][x] != piece) break;
+            x -= dir.first;
+            y -= dir.second;
+            if (!isSquareValid({ x, y })) {
+                reachedEdge1 = true;
+                break;
+            }
+        }
+
+        // Verificar hacia el otro lado
+        x = square.x + dir.first;
+        y = square.y + dir.second;
+        bool reachedEdge2 = false;
+        while (isSquareValid({ x, y })) {
+            if (model.board[y][x] != piece) break;
+            x += dir.first;
+            y += dir.second;
+            if (!isSquareValid({ x, y })) {
+                reachedEdge2 = true;
+                break;
+            }
+        }
+
+        if (reachedEdge1 && reachedEdge2) {
+            stableInDirection = true;
+        }
+
+        if (!stableInDirection) {
+            stable = false;
+            break;
+        }
+    }
+
+    return stable;
 }
 
-/**
- * @brief Simula un movimiento sin modificar el modelo original
- */
-void simulateMove(GameModel& model, Square move, GameModel& newModel)
-{
-    copyBoard(model, newModel);
-    playMove(newModel, move);
+int countStablePieces(GameModel& model, Piece piece) {
+    int count = 0;
+    for (int y = 0; y < BOARD_SIZE; y++) {
+        for (int x = 0; x < BOARD_SIZE; x++) {
+            if (model.board[y][x] == piece && isStable(model, { x, y }))
+                count++;
+        }
+    }
+    return count;
 }
 
-/**
- * @brief Estructura para ordenar movimientos
- */
-struct ScoredMove
-{
-    Square move;
-    int score;
+// ==================== CONTROL DE ESQUINAS ====================
 
-    bool operator<(const ScoredMove& other) const
-    {
-        return score > other.score;
-    }
-};
+int evaluateCornerControl(GameModel& model, Piece piece) {
+    int score = 0;
 
-/**
- * @brief Ordena movimientos usando solo heurística barata (pesos posicionales)
- */
-void orderMoves(Moves& moves, bool maximizing)
-{
-    if (moves.size() <= 1)
-        return;
+    for (const auto& corner : CORNERS) {
+        if (model.board[corner.y][corner.x] == piece) {
+            score += 100;  // Esquina capturada
+        }
+        else if (model.board[corner.y][corner.x] == PIECE_EMPTY) {
+            // Penalizar por casillas X y C ocupadas si la esquina está vacía
+            int cx = corner.x;
+            int cy = corner.y;
 
-    std::vector<ScoredMove> scoredMoves;
+            // Casilla X (diagonal)
+            int dx = (cx == 0) ? 1 : -1;
+            int dy = (cy == 0) ? 1 : -1;
+            if (model.board[cy + dy][cx + dx] == piece) {
+                score -= 25;  // Mal: ocupar X sin controlar esquina
+            }
 
-    for (auto move : moves)
-    {
-        ScoredMove sm;
-        sm.move = move;
-        sm.score = POSITION_WEIGHTS[move.y][move.x];
-
-        if (!maximizing)
-            sm.score = -sm.score;
-
-        scoredMoves.push_back(sm);
+            // Casillas C (adyacentes)
+            if (model.board[cy][cx + dx] == piece) {
+                score -= 15;
+            }
+            if (model.board[cy + dy][cx] == piece) {
+                score -= 15;
+            }
+        }
     }
 
-    std::sort(scoredMoves.begin(), scoredMoves.end());
-
-    moves.clear();
-    for (auto sm : scoredMoves)
-        moves.push_back(sm.move);
+    return score;
 }
 
-/**
- * @brief Implementa el algoritmo Minimax con poda Alfa-Beta
- */
-int alphabeta(GameModel& model, int depth, int alpha, int beta,
-    bool maximizingPlayer, Player aiPlayer)
-{
-    nodesExplored++;
+// ==================== FICHAS DE FRONTERA ====================
 
-    // Poda por cantidad de nodos
-    if (nodesExplored >= MAX_NODES)
-        return evaluate(model, aiPlayer);
+// Cuenta fichas externas (con casillas vacías adyacentes)
+int countFrontierPieces(GameModel& model, Piece piece) {
+    int count = 0;
 
-    // Verificar tabla de transposiciones
-    uint64_t hash = hashBoard(model);
-    auto it = ttable.find(hash);
-    if (it != ttable.end() && it->second.depth >= depth)
-    {
-        return it->second.value;
+    for (int y = 0; y < BOARD_SIZE; y++) {
+        for (int x = 0; x < BOARD_SIZE; x++) {
+            if (model.board[y][x] == piece) {
+                // Verificar si hay casilla vacía adyacente
+                for (const auto& dir : DIRECTIONS) {
+                    int nx = x + dir.first;
+                    int ny = y + dir.second;
+
+                    if (isSquareValid({ nx, ny }) &&
+                        model.board[ny][nx] == PIECE_EMPTY) {
+                        count++;
+                        break;
+                    }
+                }
+            }
+        }
     }
 
-    // Caso base
-    if (depth == 0 || model.gameOver)
-    {
-        int value = evaluate(model, aiPlayer);
+    return count;
+}
 
-        // Guardar en tabla
-        TranspositionEntry entry;
-        entry.value = value;
-        entry.depth = depth;
-        ttable[hash] = entry;
+// ==================== ESTABILIDAD DE BORDES ====================
 
-        return value;
+int evaluateEdgeStability(GameModel& model, Piece piece) {
+    int score = 0;
+
+    // Evaluar los 4 bordes
+    for (int i = 0; i < BOARD_SIZE; i++) {
+        // Borde superior
+        if (model.board[0][i] == piece) score += 4;
+        // Borde inferior
+        if (model.board[7][i] == piece) score += 4;
+        // Borde izquierdo
+        if (model.board[i][0] == piece) score += 4;
+        // Borde derecho
+        if (model.board[i][7] == piece) score += 4;
     }
 
-    // Obtener movimientos válidos
+    return score;
+}
+
+// ==================== EVALUACIÓN POSICIONAL ====================
+
+int evaluatePosition(GameModel& model, Piece piece) {
+    int score = 0;
+
+    for (int y = 0; y < BOARD_SIZE; y++) {
+        for (int x = 0; x < BOARD_SIZE; x++) {
+            if (model.board[y][x] == piece) {
+                score += POSITION_WEIGHTS[y][x];
+            }
+        }
+    }
+
+    return score;
+}
+
+// ==================== PARIDAD ====================
+
+int evaluateParity(GameModel& model) {
+    int emptySquares = 0;
+    for (int y = 0; y < BOARD_SIZE; y++) {
+        for (int x = 0; x < BOARD_SIZE; x++) {
+            if (model.board[y][x] == PIECE_EMPTY)
+                emptySquares++;
+        }
+    }
+
+    // Si el número de casillas vacías es impar, el jugador actual tiene ventaja
+    return (emptySquares % 2 == 1) ? 10 : -10;
+}
+
+// ==================== FUNCIÓN DE EVALUACIÓN PRINCIPAL ====================
+
+double evaluatePosition(GameModel& model, Player player) {
+    Piece playerPiece = (player == PLAYER_BLACK) ? PIECE_BLACK : PIECE_WHITE;
+    Piece opponentPiece = getOpponentPiece(playerPiece);
+
+    int phase = getGamePhase(model);
+    EvaluationWeights weights = getWeightsForPhase(phase);
+
+    double score = 0.0;
+
+    // 1. Movilidad (más importante en early/mid game)
+    int playerMobility = countMobility(model, player);
+    int opponentMobility = countMobility(model, getOpponentPlayer(player));
+    if (playerMobility + opponentMobility > 0) {
+        score += weights.mobility * 100.0 * (playerMobility - opponentMobility) /
+            (playerMobility + opponentMobility);
+    }
+
+    // 2. Movilidad potencial
+    int playerPotential = countPotentialMobility(model, player);
+    int opponentPotential = countPotentialMobility(model, getOpponentPlayer(player));
+    if (playerPotential + opponentPotential > 0) {
+        score += weights.potentialMobility * 100.0 * (playerPotential - opponentPotential) /
+            (playerPotential + opponentPotential);
+    }
+
+    // 3. Control de esquinas
+    int playerCorners = evaluateCornerControl(model, playerPiece);
+    int opponentCorners = evaluateCornerControl(model, opponentPiece);
+    score += weights.cornerControl * (playerCorners - opponentCorners);
+
+    // 4. Fichas estables
+    int playerStable = countStablePieces(model, playerPiece);
+    int opponentStable = countStablePieces(model, opponentPiece);
+    score += weights.stability * (playerStable - opponentStable);
+
+    // 5. Estabilidad de bordes
+    int playerEdge = evaluateEdgeStability(model, playerPiece);
+    int opponentEdge = evaluateEdgeStability(model, opponentPiece);
+    score += weights.edgeStability * (playerEdge - opponentEdge);
+
+    // 6. Conteo de fichas (solo importante al final)
+    int playerPieces = countPieces(model, playerPiece);
+    int opponentPieces = countPieces(model, opponentPiece);
+    score += weights.pieceCount * (playerPieces - opponentPieces);
+
+    // 7. Fichas de frontera (queremos minimizarlas)
+    int playerFrontier = countFrontierPieces(model, playerPiece);
+    int opponentFrontier = countFrontierPieces(model, opponentPiece);
+    score += weights.frontier * (playerFrontier - opponentFrontier);
+
+    // 8. Evaluación posicional
+    int playerPosition = evaluatePosition(model, playerPiece);
+    int opponentPosition = evaluatePosition(model, opponentPiece);
+    score += weights.position * (playerPosition - opponentPosition);
+
+    // 9. Paridad (solo en endgame)
+    if (phase == 2) {
+        int parityScore = evaluateParity(model);
+        if (model.currentPlayer == player) {
+            score += weights.parity * parityScore;
+        }
+        else {
+            score -= weights.parity * parityScore;
+        }
+    }
+
+    return score;
+}
+
+// ==================== ALGORITMO MINIMAX CON ALPHA-BETA PRUNING ====================
+
+double minimax(GameModel& model, int depth, double alpha, double beta, bool isMaximizing, Player originalPlayer) {
+    // Caso base: profundidad alcanzada o juego terminado
+    if (depth == 0 || model.gameOver) {
+        return evaluatePosition(model, originalPlayer);
+    }
+
     Moves validMoves;
     getValidMoves(model, validMoves);
 
     // Si no hay movimientos válidos, pasar turno
-    if (validMoves.size() == 0)
-    {
-        GameModel newModel;
-        copyBoard(model, newModel);
-        newModel.currentPlayer = (newModel.currentPlayer == PLAYER_WHITE)
-            ? PLAYER_BLACK : PLAYER_WHITE;
+    if (validMoves.empty()) {
+        GameModel newModel = model;
+        newModel.currentPlayer = getOpponentPlayer(model.currentPlayer);
 
         Moves opponentMoves;
         getValidMoves(newModel, opponentMoves);
-        if (opponentMoves.size() == 0)
-        {
+
+        if (opponentMoves.empty()) {
+            // Juego terminado
             newModel.gameOver = true;
-            return evaluate(newModel, aiPlayer);
+            return evaluatePosition(newModel, originalPlayer);
         }
 
-        return alphabeta(newModel, depth - 1, alpha, beta, !maximizingPlayer, aiPlayer);
+        // Pasar turno
+        return minimax(newModel, depth - 1, alpha, beta, !isMaximizing, originalPlayer);
     }
 
-    // Ordenar movimientos para mejorar poda
-    orderMoves(validMoves, maximizingPlayer);
+    if (isMaximizing) {
+        double maxEval = -std::numeric_limits<double>::infinity();
 
-    int bestValue;
+        for (const auto& move : validMoves) {
+            GameModel newModel = model;
+            playMove(newModel, move);
 
-    if (maximizingPlayer)
-    {
-        bestValue = INT_MIN;
+            double eval = minimax(newModel, depth - 1, alpha, beta, false, originalPlayer);
+            maxEval = std::max(maxEval, eval);
+            alpha = std::max(alpha, eval);
 
-        for (auto move : validMoves)
-        {
-            GameModel newModel;
-            simulateMove(model, move, newModel);
-
-            int eval = alphabeta(newModel, depth - 1, alpha, beta, false, aiPlayer);
-            bestValue = (eval > bestValue) ? eval : bestValue;
-
-            alpha = (eval > alpha) ? eval : alpha;
             if (beta <= alpha)
-                break; // Poda Beta
+                break;  // Poda beta
         }
+
+        return maxEval;
     }
-    else
-    {
-        bestValue = INT_MAX;
+    else {
+        double minEval = std::numeric_limits<double>::infinity();
 
-        for (auto move : validMoves)
-        {
-            GameModel newModel;
-            simulateMove(model, move, newModel);
+        for (const auto& move : validMoves) {
+            GameModel newModel = model;
+            playMove(newModel, move);
 
-            int eval = alphabeta(newModel, depth - 1, alpha, beta, true, aiPlayer);
-            bestValue = (eval < bestValue) ? eval : bestValue;
+            double eval = minimax(newModel, depth - 1, alpha, beta, true, originalPlayer);
+            minEval = std::min(minEval, eval);
+            beta = std::min(beta, eval);
 
-            beta = (eval < beta) ? eval : beta;
             if (beta <= alpha)
-                break; // Poda Alfa
+                break;  // Poda alpha
         }
+
+        return minEval;
     }
-
-    // Guardar en tabla de transposiciones
-    TranspositionEntry entry;
-    entry.value = bestValue;
-    entry.depth = depth;
-    ttable[hash] = entry;
-
-    return bestValue;
 }
 
-/**
- * @brief Retorna el mejor movimiento usando búsqueda iterativa en profundidad
- */
-Square getBestMove(GameModel& model)
-{
+// ==================== FUNCIÓN PRINCIPAL DE LA IA ====================
+
+Square getBestMove(GameModel& model) {
     Moves validMoves;
     getValidMoves(model, validMoves);
 
-    if (validMoves.size() == 0)
+    if (validMoves.empty())
         return GAME_INVALID_SQUARE;
 
-    if (validMoves.size() == 1)
-        return validMoves[0];
+    // Ajustar profundidad según la fase del juego
+    int phase = getGamePhase(model);
+    int depth;
 
-    // Limpiar tabla si está muy grande
-    if (ttable.size() > 50000)
-        ttable.clear();
+    if (phase == 0) {
+        depth = 5;  // Early game: búsqueda más profunda
+    }
+    else if (phase == 1) {
+        depth = 6;  // Mid game: profundidad media
+    }
+    else {
+        depth = 8;  // End game: búsqueda muy profunda
+    }
 
-    nodesExplored = 0;
     Square bestMove = validMoves[0];
-    Player aiPlayer = model.currentPlayer;
+    double bestValue = -std::numeric_limits<double>::infinity();
 
-    // BÚSQUEDA ITERATIVA EN PROFUNDIDAD
-    // Explora profundidad 1, 2, 3... hasta alcanzar el límite de nodos
-    for (int depth = 1; depth <= 20; depth++)
-    {
-        // Detenerse al 90% del límite para evitar cortes abruptos
-        if (nodesExplored >= MAX_NODES * 0.9)
-            break;
+    for (const auto& move : validMoves) {
+        GameModel newModel = model;
+        playMove(newModel, move);
 
-        int alpha = INT_MIN;
-        int beta = INT_MAX;
-        int bestValue = INT_MIN;
+        double value = minimax(newModel, depth - 1,
+            -std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::infinity(),
+            false, model.currentPlayer);
 
-        // Ordenar movimientos en el nodo raíz
-        orderMoves(validMoves, true);
-
-        for (auto move : validMoves)
-        {
-            GameModel newModel;
-            simulateMove(model, move, newModel);
-
-            int value = alphabeta(newModel, depth - 1, alpha, beta, false, aiPlayer);
-
-            if (value > bestValue)
-            {
-                bestValue = value;
-                bestMove = move;
-            }
-
-            alpha = (value > alpha) ? value : alpha;
-
-            // Si alcanzamos el límite, salir
-            if (nodesExplored >= MAX_NODES * 0.9)
-                break;
+        if (value > bestValue) {
+            bestValue = value;
+            bestMove = move;
         }
-
-        // Si completamos esta profundidad sin problemas, continuar
-        // Si nos quedamos sin nodos, ya tenemos el mejor movimiento hasta ahora
     }
 
     return bestMove;
