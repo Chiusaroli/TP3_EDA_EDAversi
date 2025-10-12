@@ -80,27 +80,21 @@ Si en algún momento β ≤ α, se puede podar la rama completa porque no influi
 2. Ordenamiento de movimientos heurístico
 Los movimientos se ordenan antes de explorarlos para maximizar la eficiencia de la poda:
 
-Esquinas (mayor prioridad)
-Bordes estables
-Posiciones con mayor valor posicional
-Resto de movimientos
+- Esquinas (mayor prioridad)
+- Bordes estables
+- Posiciones con mayor valor posicional
+- Resto de movimientos
 
 Esto permite encontrar movimientos óptimos temprano y podar más ramas.
+
 3. Límite de profundidad adaptativo
 Se ajusta según la fase del juego:
 
-Early game: Menor profundidad (menos opciones estratégicas críticas)
-End game: Mayor profundidad (decisiones más determinantes)
+- Early game: Menor profundidad (menos opciones estratégicas críticas)
+- End game: Mayor profundidad (decisiones más determinantes)
 
-4. Límite de nodos explorados
-Se establece un máximo de 100,000 nodos. Si se alcanza el 90% del límite, la búsqueda se detiene para garantizar respuesta en tiempo razonable.
-5. Detección de fin de juego temprano
+4. Detección de fin de juego temprano
 Si no hay movimientos válidos para ningún jugador, se evalúa inmediatamente sin continuar la búsqueda.
-Resultados de las optimizaciones:
-
-Tiempo de respuesta: < 1 segundo en la mayoría de las posiciones
-Profundidad efectiva alcanzada: 5-8 niveles dependiendo de la complejidad
-Reducción de nodos explorados: ~95% comparado con minimax básico
 
 ## Documentación adicional
 
