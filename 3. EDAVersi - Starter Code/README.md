@@ -99,7 +99,7 @@ Si no hay movimientos válidos para ningún jugador, se evalúa inmediatamente s
 ## Documentación adicional
 
 - "Estrategia Reversista", Lea Tosti para la estrategia de la ia
-- Claude AI, para el mejoramiento de la eficiencia del programa
+- Claude AI, para el mejoramiento de la eficiencia del programa, formato del README y cumplimiento de la guía de estilo
 
 ## Bonus points
 
