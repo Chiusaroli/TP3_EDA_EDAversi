@@ -1,6 +1,6 @@
 /**
  * @brief Reversi game
- * @author Marc S. Ressl
+ * @author Marc S. Ressl, Francisco Chiusarolli, Tomas Agustin Garcilazo, Juan Luis Brusasca, Luca Mateo Forchiassin
  *
  * @copyright Copyright (c) 2023-2024
  */

@@ -1,6 +1,6 @@
 /**
  * @brief Implements the Reversi game model
- * @author Marc S. Ressl
+ * @author Marc S. Ressl, Francisco Chiusarolli, Tomas Agustin Garcilazo, Juan Luis Brusasca, Luca Mateo Forchiassin
  *
  * @copyright Copyright (c) 2023-2024
  */
@@ -9,17 +9,26 @@
 
 #include "model.h"
 
-void initModel(GameModel &model)
+ // The 8 possible directions (horizontal, vertical, and diagonal)
+int directions[8][2] = {
+        {-1, -1}, {-1, 0}, {-1, 1},  // up-left, up, up-right
+        {0, -1},           {0, 1},    // left, right
+        {1, -1},  {1, 0},  {1, 1}     // down-left, down, down-right
+};
+
+void initModel(GameModel& model)
 {
     model.gameOver = true;
 
     model.playerTime[0] = 0;
     model.playerTime[1] = 0;
 
+    model.lastMove = GAME_INVALID_SQUARE;
+
     memset(model.board, PIECE_EMPTY, sizeof(model.board));
 }
 
-void startModel(GameModel &model)
+void startModel(GameModel& model)
 {
     model.gameOver = false;
 
@@ -29,6 +38,8 @@ void startModel(GameModel &model)
     model.playerTime[1] = 0;
     model.turnTimer = GetTime();
 
+    model.lastMove = GAME_INVALID_SQUARE;
+
     memset(model.board, PIECE_EMPTY, sizeof(model.board));
     model.board[BOARD_SIZE / 2 - 1][BOARD_SIZE / 2 - 1] = PIECE_WHITE;
     model.board[BOARD_SIZE / 2 - 1][BOARD_SIZE / 2] = PIECE_BLACK;
@@ -36,12 +47,12 @@ void startModel(GameModel &model)
     model.board[BOARD_SIZE / 2][BOARD_SIZE / 2 - 1] = PIECE_BLACK;
 }
 
-Player getCurrentPlayer(GameModel &model)
+Player getCurrentPlayer(GameModel& model)
 {
     return model.currentPlayer;
 }
 
-int getScore(GameModel &model, Player player)
+int getScore(GameModel& model, Player player)
 {
     int score = 0;
 
@@ -49,16 +60,16 @@ int getScore(GameModel &model, Player player)
         for (int x = 0; x < BOARD_SIZE; x++)
         {
             if (((model.board[y][x] == PIECE_WHITE) &&
-                 (player == PLAYER_WHITE)) ||
+                (player == PLAYER_WHITE)) ||
                 ((model.board[y][x] == PIECE_BLACK) &&
-                 (player == PLAYER_BLACK)))
+                    (player == PLAYER_BLACK)))
                 score++;
         }
 
     return score;
 }
 
-double getTimer(GameModel &model, Player player)
+double getTimer(GameModel& model, Player player)
 {
     double turnTime = 0;
 
@@ -68,12 +79,12 @@ double getTimer(GameModel &model, Player player)
     return model.playerTime[player] + turnTime;
 }
 
-Piece getBoardPiece(GameModel &model, Square square)
+Piece getBoardPiece(GameModel& model, Square square)
 {
     return model.board[square.y][square.x];
 }
 
-void setBoardPiece(GameModel &model, Square square, Piece piece)
+void setBoardPiece(GameModel& model, Square square, Piece piece)
 {
     model.board[square.y][square.x] = piece;
 }
@@ -81,38 +92,31 @@ void setBoardPiece(GameModel &model, Square square, Piece piece)
 bool isSquareValid(Square square)
 {
     return (square.x >= 0) &&
-           (square.x < BOARD_SIZE) &&
-           (square.y >= 0) &&
-           (square.y < BOARD_SIZE);
+        (square.x < BOARD_SIZE) &&
+        (square.y >= 0) &&
+        (square.y < BOARD_SIZE);
 }
 
 void getValidMoves(GameModel& model, Moves& validMoves)
 {
-    // Determinar la ficha del jugador actual y del oponente
+    // Determine current player's piece and opponent's piece
     Piece currentPiece = (model.currentPlayer == PLAYER_WHITE) ? PIECE_WHITE : PIECE_BLACK;
     Piece opponentPiece = (model.currentPlayer == PLAYER_WHITE) ? PIECE_BLACK : PIECE_WHITE;
 
-    // Las 8 direcciones posibles (horizontal, vertical y diagonal)
-    int directions[8][2] = {
-        {-1, -1}, {-1, 0}, {-1, 1},  // arriba-izq, arriba, arriba-der
-        {0, -1},           {0, 1},    // izquierda, derecha
-        {1, -1},  {1, 0},  {1, 1}     // abajo-izq, abajo, abajo-der
-    };
-
-    // Revisar cada casilla del tablero
+    // Check each square on the board
     for (int y = 0; y < BOARD_SIZE; y++)
     {
         for (int x = 0; x < BOARD_SIZE; x++)
         {
             Square move = { x, y };
 
-            // Si la casilla no está vacía, no es válida
+            // If the square is not empty, it's not valid
             if (getBoardPiece(model, move) != PIECE_EMPTY)
                 continue;
 
             bool isValid = false;
 
-            // Revisar cada dirección
+            // Check each direction
             for (int d = 0; d < 8; d++)
             {
                 int dx = directions[d][0];
@@ -121,115 +125,105 @@ void getValidMoves(GameModel& model, Moves& validMoves)
                 Square current = { x + dx, y + dy };
                 bool foundOpponent = false;
 
-                // Avanzar en esta dirección mientras sea válido
+                // Advance in this direction while valid
                 while (isSquareValid(current))
                 {
                     Piece piece = getBoardPiece(model, current);
 
-                    // Si encontramos una casilla vacía, esta dirección no captura nada
+                    // If we find an empty square, this direction captures nothing
                     if (piece == PIECE_EMPTY)
                         break;
 
-                    // Si encontramos una ficha del oponente, seguimos buscando
+                    // If we find an opponent's piece, keep searching
                     if (piece == opponentPiece)
                     {
                         foundOpponent = true;
                         current.x += dx;
                         current.y += dy;
-                        continue;  // Seguir avanzando en esta dirección
+                        continue;  // Continue advancing in this direction
                     }
 
-                    // Si encontramos nuestra ficha
+                    // If we find our piece
                     if (piece == currentPiece)
                     {
-                        // Solo es válido si antes encontramos al menos una ficha del oponente
+                        // It's only valid if we found at least one opponent's piece before
                         if (foundOpponent)
                         {
                             isValid = true;
-                            break;  // Salir del for, ya encontramos una dirección válida
+                            break;  // Exit the for loop, we found a valid direction
                         }
-                        break;  // Terminar esta dirección
+                        break;  // End this direction
                     }
                 }
             }
 
-            // Si el movimiento es válido en al menos una dirección, agregarlo
+            // If the move is valid in at least one direction, add it
             if (isValid)
                 validMoves.push_back(move);
         }
     }
 }
 
-bool playMove(GameModel &model, Square move)
+bool playMove(GameModel& model, Square move)
 {
+    model.lastMove = move;  // NEW: Save the last move
+
     // Set game piece
     Piece piece =
         (getCurrentPlayer(model) == PLAYER_WHITE)
-            ? PIECE_WHITE
-            : PIECE_BLACK;
+        ? PIECE_WHITE
+        : PIECE_BLACK;
 
     setBoardPiece(model, move, piece);
 
-    // Definir las 8 direcciones posibles (arriba, abajo, izq, der, y 4 diagonales)
-    int directions[8][2] = {
-        {-1, -1},  // Arriba-Izquierda
-        {0, -1},   // Arriba
-        {1, -1},   // Arriba-Derecha
-        {-1, 0},   // Izquierda
-        {1, 0},    // Derecha
-        {-1, 1},   // Abajo-Izquierda
-        {0, 1},    // Abajo
-        {1, 1}     // Abajo-Derecha
-    };
-
-    // Determinar cuál es la pieza enemiga
+    // Determine which is the enemy piece
     Piece enemyPiece = (piece == PIECE_WHITE) ? PIECE_BLACK : PIECE_WHITE;
 
-    // Para cada una de las 8 direcciones
+    // For each of the 8 directions
     for (int dir = 0; dir < 8; dir++)
     {
-        int dx = directions[dir][0];  // Desplazamiento en X
-        int dy = directions[dir][1];  // Desplazamiento en Y
+        int dx = directions[dir][0];  // X displacement
+        int dy = directions[dir][1];  // Y displacement
 
-        // Empezar desde la posición siguiente a donde pusimos nuestra ficha
+        // Start from the position next to where we placed our piece
         Square current = { move.x + dx, move.y + dy };
 
-        // Lista para guardar las fichas enemigas que encontremos
+        // List to store the enemy pieces we find
         std::vector<Square> toFlip;
 
-        // Avanzar en esta dirección mientras estemos en el tablero
+        // Advance in this direction while we're on the board
         while (isSquareValid(current))
         {
             Piece currentPiece = getBoardPiece(model, current);
 
-            // Si encontramos una casilla vacía, no hay nada que voltear
+            // If we find an empty square, there's nothing to flip
             if (currentPiece == PIECE_EMPTY)
             {
-                break;  // Salir del while
+                break;  // Exit the while
             }
 
-            // Si encontramos una ficha enemiga, la guardamos
+            // If we find an enemy piece, save it
             if (currentPiece == enemyPiece)
             {
                 toFlip.push_back(current);
             }
 
-            // Si encontramos una ficha nuestra
+            // If we find our piece
             if (currentPiece == piece)
             {
-                // Solo volteamos si hay fichas enemigas en el medio
+                // Only flip if there are enemy pieces in between
                 if (toFlip.size() > 0)
                 {
-                    // Voltear todas las fichas enemigas que guardamos
+                    // Flip all the enemy pieces we saved
                     for (int i = 0; i < toFlip.size(); i++)
                     {
                         setBoardPiece(model, toFlip[i], piece);
                     }
                 }
-                break;  // Salir del while
+                break;  // Exit the while
             }
 
-            // Avanzar a la siguiente casilla en esta dirección
+            // Advance to the next square in this direction
             current.x += dx;
             current.y += dy;
         }
@@ -243,8 +237,8 @@ bool playMove(GameModel &model, Square move)
     // Swap player
     model.currentPlayer =
         (model.currentPlayer == PLAYER_WHITE)
-            ? PLAYER_BLACK
-            : PLAYER_WHITE;
+        ? PLAYER_BLACK
+        : PLAYER_WHITE;
 
     // Game over?
     Moves validMoves;
@@ -255,8 +249,8 @@ bool playMove(GameModel &model, Square move)
         // Swap player
         model.currentPlayer =
             (model.currentPlayer == PLAYER_WHITE)
-                ? PLAYER_BLACK
-                : PLAYER_WHITE;
+            ? PLAYER_BLACK
+            : PLAYER_WHITE;
 
         Moves validMoves;
         getValidMoves(model, validMoves);

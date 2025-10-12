@@ -1,6 +1,6 @@
 /**
  * @brief Implements the Reversi game view
- * @author Marc S. Ressl
+ * @author Marc S. Ressl, Francisco Chiusarolli, Tomas Agustin Garcilazo, Juan Luis Brusasca, Luca Mateo Forchiassin
  *
  * @copyright Copyright (c) 2023-2024
  */
@@ -25,7 +25,7 @@
 #define PIECE_CENTER (SQUARE_SIZE / 2)
 #define PIECE_RADIUS (SQUARE_SIZE * 80 / 100 / 2)
 
-#define VALID_MOVE_RADIUS (SQUARE_SIZE * 30 / 100 / 2)  // Radio para indicador de movimiento válido
+#define VALID_MOVE_RADIUS (SQUARE_SIZE * 30 / 100 / 2)  // Radius for valid move indicator
 
 #define BOARD_X 40
 #define BOARD_Y 40
@@ -181,7 +181,7 @@ void drawView(GameModel& model)
         OUTERBORDER_SIZE,
         BLACK);
 
-    // Obtener movimientos válidos para el jugador actual
+    // Get valid moves for the current player
     Moves validMoves;
     if (!model.gameOver)
         getValidMoves(model, validMoves);
@@ -212,10 +212,26 @@ void drawView(GameModel& model)
                     (int)position.y + PIECE_CENTER,
                     PIECE_RADIUS,
                     (piece == PIECE_WHITE) ? WHITE : BLACK);
+
+                // Highlight the last move with a colored ring
+                if (isSquareValid(model.lastMove) &&
+                    square.x == model.lastMove.x &&
+                    square.y == model.lastMove.y)
+                {
+                    // Yellow/orange ring to highlight the last move
+                    DrawRing(
+                        { (float)position.x + PIECE_CENTER,
+                         (float)position.y + PIECE_CENTER },
+                        PIECE_RADIUS - 5,      // Inner radius
+                        PIECE_RADIUS,          // Outer radius
+                        0, 360, 36,            // Angles and segments
+                        (piece == PIECE_WHITE) ? GOLD : ORANGE
+                    );
+                }
             }
             else if (!model.gameOver && model.currentPlayer == model.humanPlayer)
             {
-                // Verificar si este cuadro es un movimiento válido
+                // Check if this square is a valid move
                 bool isValidMove = false;
                 for (const auto& move : validMoves)
                 {
@@ -226,12 +242,12 @@ void drawView(GameModel& model)
                     }
                 }
 
-                // Dibujar indicador si es un movimiento válido
+                // Draw indicator if it's a valid move
                 if (isValidMove)
                 {
                     Color indicatorColor = (model.currentPlayer == PLAYER_BLACK)
-                        ? Color{ 50, 50, 50, 150 }    // Negro semi-transparente
-                    : Color{ 255, 255, 255, 150 }; // Blanco semi-transparente
+                        ? Color{ 50, 50, 50, 150 }    // Semi-transparent black
+                    : Color{ 255, 255, 255, 150 }; // Semi-transparent white
 
                     DrawCircle((int)position.x + PIECE_CENTER,
                         (int)position.y + PIECE_CENTER,

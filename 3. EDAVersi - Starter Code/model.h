@@ -1,6 +1,6 @@
 /**
  * @brief Implements the Reversi game model
- * @author Marc S. Ressl
+ * @author Marc S. Ressl, Francisco Chiusarolli, Tomas Agustin Garcilazo, Juan Luis Brusasca, Luca Mateo Forchiassin
  *
  * @copyright Copyright (c) 2023-2024
  */
@@ -49,6 +49,8 @@ struct GameModel
     Piece board[BOARD_SIZE][BOARD_SIZE];
 
     Player humanPlayer;
+
+    Square lastMove;  // NUEVO: último movimiento realizado
 };
 
 typedef std::vector<Square> Moves;
