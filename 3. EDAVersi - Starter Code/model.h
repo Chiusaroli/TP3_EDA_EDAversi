@@ -50,7 +50,7 @@ struct GameModel
 
     Player humanPlayer;
 
-    Square lastMove;  // NUEVO: último movimiento realizado
+    Square lastMove;
 };
 
 typedef std::vector<Square> Moves;

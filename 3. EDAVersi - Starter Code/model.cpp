@@ -1,23 +1,36 @@
 /**
+ * @file model.cpp
  * @brief Implements the Reversi game model
- * @author Marc S. Ressl, Francisco Chiusarolli, Tomas Agustin Garcilazo, Juan Luis Brusasca, Luca Mateo Forchiassin
+ * @author Marc S. Ressl, Francisco Chiusarolli, Tomas Agustin Garcilazo,
+ *         Juan Luis Brusasca, Luca Mateo Forchiassin
+ * @date 2023-2024
  *
- * @copyright Copyright (c) 2023-2024
+ * This file implements the core game logic for Reversi, including board state
+ * management, move validation, piece flipping, score calculation, and game flow
+ * control. It handles the rules of Reversi and maintains game state.
  */
 
 #include "raylib.h"
 
 #include "model.h"
 
- // The 8 possible directions (horizontal, vertical, and diagonal)
-int directions[8][2] = {
-        {-1, -1}, {-1, 0}, {-1, 1},  // up-left, up, up-right
-        {0, -1},           {0, 1},    // left, right
-        {1, -1},  {1, 0},  {1, 1}     // down-left, down, down-right
+const int DIRECTION_COUNT = 8;
+
+int directions[DIRECTION_COUNT][2] = {
+  {-1, -1}, {-1, 0}, {-1, 1},
+  {0, -1},           {0, 1},
+  {1, -1},  {1, 0},  {1, 1}
 };
 
-void initModel(GameModel& model)
-{
+/**
+ * @brief Initializes the game model to a neutral state
+ *
+ * Sets the game to "game over" state with an empty board and reset timers.
+ * Used for initial setup before starting a new game.
+ *
+ * @param model Game model to initialize (modified)
+ */
+void initModel(GameModel& model) {
     model.gameOver = true;
 
     model.playerTime[0] = 0;
@@ -28,8 +41,16 @@ void initModel(GameModel& model)
     memset(model.board, PIECE_EMPTY, sizeof(model.board));
 }
 
-void startModel(GameModel& model)
-{
+/**
+ * @brief Starts a new game with initial Reversi configuration
+ *
+ * Sets up the standard Reversi starting position with four pieces in the
+ * center (two white, two black in diagonal pattern), resets timers, and
+ * sets black as the starting player.
+ *
+ * @param model Game model to start (modified)
+ */
+void startModel(GameModel& model) {
     model.gameOver = false;
 
     model.currentPlayer = PLAYER_BLACK;
@@ -47,30 +68,50 @@ void startModel(GameModel& model)
     model.board[BOARD_SIZE / 2][BOARD_SIZE / 2 - 1] = PIECE_BLACK;
 }
 
-Player getCurrentPlayer(GameModel& model)
-{
+/**
+ * @brief Returns the current player
+ *
+ * @param model Current game state
+ * @return Player Current player (PLAYER_WHITE or PLAYER_BLACK)
+ */
+Player getCurrentPlayer(GameModel& model) {
     return model.currentPlayer;
 }
 
-int getScore(GameModel& model, Player player)
-{
+/**
+ * @brief Calculates the score for a given player
+ *
+ * Counts the number of pieces on the board belonging to the specified player.
+ *
+ * @param model Current game state
+ * @param player Player whose score to calculate
+ * @return int Number of pieces belonging to the player
+ */
+int getScore(GameModel& model, Player player) {
     int score = 0;
 
-    for (int y = 0; y < BOARD_SIZE; y++)
-        for (int x = 0; x < BOARD_SIZE; x++)
-        {
-            if (((model.board[y][x] == PIECE_WHITE) &&
-                (player == PLAYER_WHITE)) ||
-                ((model.board[y][x] == PIECE_BLACK) &&
-                    (player == PLAYER_BLACK)))
+    for (int y = 0; y < BOARD_SIZE; y++) {
+        for (int x = 0; x < BOARD_SIZE; x++) {
+            if (((model.board[y][x] == PIECE_WHITE) && (player == PLAYER_WHITE)) ||
+                ((model.board[y][x] == PIECE_BLACK) && (player == PLAYER_BLACK)))
                 score++;
         }
+    }
 
     return score;
 }
 
-double getTimer(GameModel& model, Player player)
-{
+/**
+ * @brief Returns accumulated time for a player
+ *
+ * Calculates total time spent by the player including the current turn
+ * if it's their turn and the game is still active.
+ *
+ * @param model Current game state
+ * @param player Player whose time to retrieve
+ * @return double Total time in seconds
+ */
+double getTimer(GameModel& model, Player player) {
     double turnTime = 0;
 
     if (!model.gameOver && (player == model.currentPlayer))
@@ -79,178 +120,168 @@ double getTimer(GameModel& model, Player player)
     return model.playerTime[player] + turnTime;
 }
 
-Piece getBoardPiece(GameModel& model, Square square)
-{
+/**
+ * @brief Returns the piece at a given board position
+ *
+ * @param model Current game state
+ * @param square Board position to query
+ * @return Piece Piece at the position (PIECE_EMPTY, PIECE_WHITE, or PIECE_BLACK)
+ */
+Piece getBoardPiece(GameModel& model, Square square) {
     return model.board[square.y][square.x];
 }
 
-void setBoardPiece(GameModel& model, Square square, Piece piece)
-{
+/**
+ * @brief Sets a piece at a given board position
+ *
+ * @param model Current game state (modified)
+ * @param square Board position to set
+ * @param piece Piece to place at the position
+ */
+void setBoardPiece(GameModel& model, Square square, Piece piece) {
     model.board[square.y][square.x] = piece;
 }
 
-bool isSquareValid(Square square)
-{
-    return (square.x >= 0) &&
-        (square.x < BOARD_SIZE) &&
-        (square.y >= 0) &&
-        (square.y < BOARD_SIZE);
+/**
+ * @brief Checks if a square is within board boundaries
+ *
+ * @param square Square to validate
+ * @return bool True if square is within bounds, false otherwise
+ */
+bool isSquareValid(Square square) {
+    return (square.x >= 0) && (square.x < BOARD_SIZE) &&
+        (square.y >= 0) && (square.y < BOARD_SIZE);
 }
 
-void getValidMoves(GameModel& model, Moves& validMoves)
-{
-    // Determine current player's piece and opponent's piece
-    Piece currentPiece = (model.currentPlayer == PLAYER_WHITE) ? PIECE_WHITE : PIECE_BLACK;
-    Piece opponentPiece = (model.currentPlayer == PLAYER_WHITE) ? PIECE_BLACK : PIECE_WHITE;
+/**
+ * @brief Finds all valid moves for the current player
+ *
+ * A move is valid if it places a piece that captures at least one opponent
+ * piece in any direction (horizontal, vertical, or diagonal). The move must
+ * form a continuous line of opponent pieces ending with the player's own piece.
+ *
+ * @param model Current game state
+ * @param validMoves Output list of valid moves (cleared and populated)
+ */
+void getValidMoves(GameModel& model, Moves& validMoves) {
+    Piece currentPiece = (model.currentPlayer == PLAYER_WHITE)
+        ? PIECE_WHITE : PIECE_BLACK;
+    Piece opponentPiece = (model.currentPlayer == PLAYER_WHITE)
+        ? PIECE_BLACK : PIECE_WHITE;
 
-    // Check each square on the board
-    for (int y = 0; y < BOARD_SIZE; y++)
-    {
-        for (int x = 0; x < BOARD_SIZE; x++)
-        {
+    for (int y = 0; y < BOARD_SIZE; y++) {
+        for (int x = 0; x < BOARD_SIZE; x++) {
             Square move = { x, y };
 
-            // If the square is not empty, it's not valid
             if (getBoardPiece(model, move) != PIECE_EMPTY)
                 continue;
 
             bool isValid = false;
 
-            // Check each direction
-            for (int d = 0; d < 8; d++)
-            {
+            for (int d = 0; d < DIRECTION_COUNT; d++) {
                 int dx = directions[d][0];
                 int dy = directions[d][1];
 
                 Square current = { x + dx, y + dy };
                 bool foundOpponent = false;
 
-                // Advance in this direction while valid
-                while (isSquareValid(current))
-                {
+                while (isSquareValid(current)) {
                     Piece piece = getBoardPiece(model, current);
 
-                    // If we find an empty square, this direction captures nothing
                     if (piece == PIECE_EMPTY)
                         break;
 
-                    // If we find an opponent's piece, keep searching
-                    if (piece == opponentPiece)
-                    {
+                    if (piece == opponentPiece) {
                         foundOpponent = true;
                         current.x += dx;
                         current.y += dy;
-                        continue;  // Continue advancing in this direction
+                        continue;
                     }
 
-                    // If we find our piece
-                    if (piece == currentPiece)
-                    {
-                        // It's only valid if we found at least one opponent's piece before
-                        if (foundOpponent)
-                        {
+                    if (piece == currentPiece) {
+                        if (foundOpponent) {
                             isValid = true;
-                            break;  // Exit the for loop, we found a valid direction
+                            break;
                         }
-                        break;  // End this direction
+                        break;
                     }
                 }
             }
 
-            // If the move is valid in at least one direction, add it
             if (isValid)
                 validMoves.push_back(move);
         }
     }
 }
 
-bool playMove(GameModel& model, Square move)
-{
-    model.lastMove = move;  // NEW: Save the last move
+/**
+ * @brief Executes a move on the board
+ *
+ * Places the current player's piece at the specified position and flips all
+ * captured opponent pieces in all valid directions. Updates game timers,
+ * switches to the next player, and checks for game over conditions.
+ *
+ * Game ends when neither player has valid moves available.
+ *
+ * @param model Current game state (modified)
+ * @param move Square where the piece is placed
+ * @return bool True if move was executed successfully
+ */
+bool playMove(GameModel& model, Square move) {
+    model.lastMove = move;
 
-    // Set game piece
-    Piece piece =
-        (getCurrentPlayer(model) == PLAYER_WHITE)
-        ? PIECE_WHITE
-        : PIECE_BLACK;
+    Piece piece = (getCurrentPlayer(model) == PLAYER_WHITE)
+        ? PIECE_WHITE : PIECE_BLACK;
 
     setBoardPiece(model, move, piece);
 
-    // Determine which is the enemy piece
     Piece enemyPiece = (piece == PIECE_WHITE) ? PIECE_BLACK : PIECE_WHITE;
 
-    // For each of the 8 directions
-    for (int dir = 0; dir < 8; dir++)
-    {
-        int dx = directions[dir][0];  // X displacement
-        int dy = directions[dir][1];  // Y displacement
+    for (int dir = 0; dir < DIRECTION_COUNT; dir++) {
+        int dx = directions[dir][0];
+        int dy = directions[dir][1];
 
-        // Start from the position next to where we placed our piece
         Square current = { move.x + dx, move.y + dy };
 
-        // List to store the enemy pieces we find
         std::vector<Square> toFlip;
 
-        // Advance in this direction while we're on the board
-        while (isSquareValid(current))
-        {
+        while (isSquareValid(current)) {
             Piece currentPiece = getBoardPiece(model, current);
 
-            // If we find an empty square, there's nothing to flip
             if (currentPiece == PIECE_EMPTY)
-            {
-                break;  // Exit the while
-            }
+                break;
 
-            // If we find an enemy piece, save it
-            if (currentPiece == enemyPiece)
-            {
+            if (currentPiece == enemyPiece) {
                 toFlip.push_back(current);
             }
 
-            // If we find our piece
-            if (currentPiece == piece)
-            {
-                // Only flip if there are enemy pieces in between
-                if (toFlip.size() > 0)
-                {
-                    // Flip all the enemy pieces we saved
-                    for (int i = 0; i < toFlip.size(); i++)
-                    {
+            if (currentPiece == piece) {
+                if (toFlip.size() > 0) {
+                    for (int i = 0; i < toFlip.size(); i++) {
                         setBoardPiece(model, toFlip[i], piece);
                     }
                 }
-                break;  // Exit the while
+                break;
             }
 
-            // Advance to the next square in this direction
             current.x += dx;
             current.y += dy;
         }
     }
 
-    // Update timer
     double currentTime = GetTime();
     model.playerTime[model.currentPlayer] += currentTime - model.turnTimer;
     model.turnTimer = currentTime;
 
-    // Swap player
-    model.currentPlayer =
-        (model.currentPlayer == PLAYER_WHITE)
-        ? PLAYER_BLACK
-        : PLAYER_WHITE;
+    model.currentPlayer = (model.currentPlayer == PLAYER_WHITE)
+        ? PLAYER_BLACK : PLAYER_WHITE;
 
-    // Game over?
     Moves validMoves;
     getValidMoves(model, validMoves);
 
-    if (validMoves.size() == 0)
-    {
-        // Swap player
-        model.currentPlayer =
-            (model.currentPlayer == PLAYER_WHITE)
-            ? PLAYER_BLACK
-            : PLAYER_WHITE;
+    if (validMoves.size() == 0) {
+        model.currentPlayer = (model.currentPlayer == PLAYER_WHITE)
+            ? PLAYER_BLACK : PLAYER_WHITE;
 
         Moves validMoves;
         getValidMoves(model, validMoves);
